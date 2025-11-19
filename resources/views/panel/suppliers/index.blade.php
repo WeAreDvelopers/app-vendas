@@ -24,9 +24,9 @@
             <tr>
               <th>ID</th>
               <th>Nome</th>
-              <th>Código</th>
+              <th>CÃ³digo</th>
               <th>Status</th>
-              <th>Importações</th>
+              <th>ImportaÃ§Ãµes</th>
               <th>Mapeamento</th>
               <th></th>
             </tr>
@@ -54,7 +54,7 @@
                   @if($supplier->mapping)
                     <span class="badge bg-primary">Configurado</span>
                   @else
-                    <span class="badge bg-warning">Não configurado</span>
+                    <span class="badge bg-warning">NÃ£o configurado</span>
                   @endif
                 </td>
                 <td>
