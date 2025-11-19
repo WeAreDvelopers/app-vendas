@@ -1,0 +1,374 @@
+<?php
+
+namespace App\Services;
+
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+
+class MercadoLivreService
+{
+    private const API_BASE_URL = 'https://api.mercadolibre.com';
+
+    /**
+     * Valida e prepara dados do produto para publicação no ML
+     * Retorna análise de qualidade (score 0-100)
+     */
+    public function validateProduct($product, $images = []): array
+    {
+        $score = 0;
+        $maxScore = 100;
+        $missingFields = [];
+        $warnings = [];
+        $errors = [];
+
+        // 1. Título (20 pontos)
+        if (!empty($product->name)) {
+            $titleLength = mb_strlen($product->name);
+            if ($titleLength <= 60) {
+                $score += 20;
+            } else {
+                $warnings[] = "Título muito longo ({$titleLength} caracteres). Máximo: 60.";
+                $score += 10; // Pontos parciais
+            }
+        } else {
+            $errors[] = 'Título é obrigatório';
+            $missingFields[] = 'title';
+        }
+
+        // 2. Preço (15 pontos)
+        if (!empty($product->price) && $product->price > 0) {
+            $score += 15;
+        } else {
+            $errors[] = 'Preço é obrigatório e deve ser maior que zero';
+            $missingFields[] = 'price';
+        }
+
+        // 3. Descrição (15 pontos)
+        if (!empty($product->description)) {
+            $descLength = mb_strlen($product->description);
+            if ($descLength >= 100) {
+                $score += 15;
+            } else {
+                $warnings[] = "Descrição muito curta ({$descLength} caracteres). Recomendado: 100+.";
+                $score += 8;
+            }
+        } else {
+            $warnings[] = 'Descrição não preenchida. Recomendado para melhor conversão.';
+            $missingFields[] = 'description';
+        }
+
+        // 4. Imagens (20 pontos)
+        $imageCount = count($images);
+        if ($imageCount >= 6) {
+            $score += 20;
+        } elseif ($imageCount >= 3) {
+            $score += 15;
+            $warnings[] = "Apenas {$imageCount} imagens. Recomendado: 6+ para melhor conversão.";
+        } elseif ($imageCount >= 1) {
+            $score += 10;
+            $warnings[] = "Apenas {$imageCount} imagem(ns). Mínimo: 1, Recomendado: 6+.";
+        } else {
+            $errors[] = 'Pelo menos 1 imagem é obrigatória';
+            $missingFields[] = 'pictures';
+        }
+
+        // Valida tamanho das imagens
+        foreach ($images as $index => $image) {
+            // Verifica se a imagem existe no storage
+            $imagePath = str_replace('/storage/', '', $image->path);
+            $fullPath = storage_path('app/public/' . $imagePath);
+
+            if (file_exists($fullPath)) {
+                $imageSize = getimagesize($fullPath);
+                if ($imageSize) {
+                    [$width, $height] = $imageSize;
+
+                    if ($width < 500 || $height < 500) {
+                        $warnings[] = "Imagem #{$index} muito pequena ({$width}x{$height}px). Mínimo: 500x500px.";
+                    }
+
+                    if ($width < 1200 || $height < 1200) {
+                        $warnings[] = "Imagem #{$index} abaixo do recomendado. Ideal: 1200x1200px para zoom.";
+                    }
+                }
+            }
+        }
+
+        // 5. EAN/GTIN (10 pontos)
+        if (!empty($product->ean)) {
+            $score += 10;
+        } else {
+            $warnings[] = 'EAN/GTIN não preenchido. Recomendado para categorias obrigatórias.';
+            $missingFields[] = 'ean';
+        }
+
+        // 6. Marca (10 pontos)
+        if (!empty($product->brand)) {
+            $score += 10;
+        } else {
+            $warnings[] = 'Marca não preenchida. Importante para posicionamento.';
+            $missingFields[] = 'brand';
+        }
+
+        // 7. Estoque (5 pontos)
+        if (isset($product->stock) && $product->stock > 0) {
+            $score += 5;
+        } else {
+            $warnings[] = 'Estoque zero ou não definido.';
+        }
+
+        // 8. SKU (5 pontos)
+        if (!empty($product->sku)) {
+            $score += 5;
+        } else {
+            $warnings[] = 'SKU não preenchido.';
+        }
+
+        return [
+            'score' => $score,
+            'max_score' => $maxScore,
+            'percentage' => round(($score / $maxScore) * 100),
+            'missing_fields' => $missingFields,
+            'warnings' => $warnings,
+            'errors' => $errors,
+            'can_publish' => count($errors) === 0,
+            'quality_level' => $score >= 80 ? 'excellent' : ($score >= 60 ? 'good' : ($score >= 40 ? 'fair' : 'poor'))
+        ];
+    }
+
+    /**
+     * Prepara payload para criação de anúncio no ML
+     */
+    public function prepareListingPayload($product, $listingData, $images = []): array
+    {
+        // Prepara título otimizado (máx 60 chars)
+        $title = $this->optimizeTitle($product->name, $product->brand);
+
+        // Prepara imagens (máximo 10)
+        $pictures = [];
+        foreach (array_slice($images, 0, 10) as $image) {
+            // URL pública da imagem
+            $imageUrl = url($image->path);
+            $pictures[] = ['source' => $imageUrl];
+        }
+
+        // Prepara atributos da categoria
+        $attributes = [];
+
+        // Atributo BRAND (obrigatório em muitas categorias)
+        if (!empty($product->brand)) {
+            $attributes[] = [
+                'id' => 'BRAND',
+                'value_name' => $product->brand
+            ];
+        }
+
+        // Atributo GTIN (EAN)
+        if (!empty($product->ean)) {
+            $attributes[] = [
+                'id' => 'GTIN',
+                'value_name' => $product->ean
+            ];
+        }
+
+        // Atributo SKU do seller
+        if (!empty($product->sku)) {
+            $attributes[] = [
+                'id' => 'SELLER_SKU',
+                'value_name' => $product->sku
+            ];
+        }
+
+        // Payload base
+        $payload = [
+            'title' => $title,
+            'category_id' => $listingData['category_id'],
+            'price' => (float) $listingData['price'],
+            'currency_id' => 'BRL',
+            'available_quantity' => (int) ($listingData['available_quantity'] ?? $product->stock ?? 1),
+            'buying_mode' => 'buy_it_now',
+            'condition' => $listingData['condition'] ?? 'new',
+            'listing_type_id' => $listingData['listing_type_id'] ?? 'gold_special',
+            'pictures' => $pictures,
+            'attributes' => $attributes,
+        ];
+
+        // Adiciona descrição se disponível
+        if (!empty($product->description)) {
+            $payload['description'] = [
+                'plain_text' => $this->stripMarkdown($product->description)
+            ];
+        }
+
+        // Adiciona video_id se disponível
+        if (!empty($listingData['video_id'])) {
+            $payload['video_id'] = $listingData['video_id'];
+        }
+
+        // Configurações de envio
+        $payload['shipping'] = [
+            'mode' => $listingData['shipping_mode'] ?? 'me2',
+            'free_shipping' => (bool) ($listingData['free_shipping'] ?? false),
+            'local_pick_up' => $listingData['shipping_local_pick_up'] !== 'false',
+        ];
+
+        // Garantia (se disponível)
+        if (!empty($listingData['warranty_type'])) {
+            $payload['warranty'] = [
+                'type' => $listingData['warranty_type'],
+                'time' => $listingData['warranty_time'] ?? '90 dias'
+            ];
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Otimiza título para ML (máx 60 caracteres)
+     * Formato: Marca + Produto + Principais características
+     */
+    private function optimizeTitle(string $name, ?string $brand = null): string
+    {
+        $title = '';
+
+        // Se tiver marca e não estiver no início do nome
+        if ($brand && stripos($name, $brand) !== 0) {
+            $title = $brand . ' ';
+        }
+
+        $title .= $name;
+
+        // Trunca em 60 caracteres se necessário
+        if (mb_strlen($title) > 60) {
+            $title = mb_substr($title, 0, 57) . '...';
+        }
+
+        return $title;
+    }
+
+    /**
+     * Remove markdown da descrição (ML aceita apenas texto puro)
+     */
+    private function stripMarkdown(string $markdown): string
+    {
+        // Remove headers (##)
+        $text = preg_replace('/^#{1,6}\s+/m', '', $markdown);
+
+        // Remove bold (**texto**)
+        $text = preg_replace('/\*\*(.*?)\*\*/', '$1', $text);
+
+        // Remove italic (*texto*)
+        $text = preg_replace('/\*(.*?)\*/', '$1', $text);
+
+        // Remove links [texto](url)
+        $text = preg_replace('/\[(.*?)\]\(.*?\)/', '$1', $text);
+
+        // Remove bullets (- ou *)
+        $text = preg_replace('/^[\*\-]\s+/m', '• ', $text);
+
+        return trim($text);
+    }
+
+    /**
+     * Cria ou atualiza rascunho do anúncio no banco
+     */
+    public function saveDraft($productId, array $data): int
+    {
+        // Busca rascunho existente
+        $existing = DB::table('mercado_livre_listings')
+            ->where('product_id', $productId)
+            ->first();
+
+        $listingData = [
+            'product_id' => $productId,
+            'title' => $data['title'] ?? '',
+            'category_id' => $data['category_id'] ?? '',
+            'price' => $data['price'] ?? 0,
+            'currency_id' => 'BRL',
+            'available_quantity' => $data['available_quantity'] ?? 1,
+            'condition' => $data['condition'] ?? 'new',
+            'listing_type_id' => $data['listing_type_id'] ?? 'gold_special',
+            'plain_text_description' => $data['plain_text_description'] ?? null,
+            'video_id' => $data['video_id'] ?? null,
+            'attributes' => json_encode($data['attributes'] ?? []),
+            'shipping_mode' => $data['shipping_mode'] ?? 'me2',
+            'free_shipping' => $data['free_shipping'] ?? false,
+            'shipping_local_pick_up' => $data['shipping_local_pick_up'] ?? 'true',
+            'warranty_type' => $data['warranty_type'] ?? null,
+            'warranty_time' => $data['warranty_time'] ?? null,
+            'quality_score' => $data['quality_score'] ?? 0,
+            'missing_fields' => json_encode($data['missing_fields'] ?? []),
+            'validation_errors' => json_encode($data['validation_errors'] ?? []),
+            'status' => 'draft',
+            'updated_at' => now(),
+        ];
+
+        if ($existing) {
+            DB::table('mercado_livre_listings')
+                ->where('id', $existing->id)
+                ->update($listingData);
+            return $existing->id;
+        } else {
+            $listingData['created_at'] = now();
+            return DB::table('mercado_livre_listings')->insertGetId($listingData);
+        }
+    }
+
+    /**
+     * Busca categorias sugeridas pelo ML baseado no título
+     */
+    public function predictCategory(string $title): array
+    {
+        try {
+            $response = Http::timeout(10)->get(self::API_BASE_URL . '/sites/MLB/domain_discovery/search', [
+                'q' => $title,
+                'limit' => 5
+            ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+
+                $categories = [];
+                foreach ($data as $item) {
+                    if (isset($item['category_id'])) {
+                        $categories[] = [
+                            'id' => $item['category_id'],
+                            'name' => $item['category_name'] ?? $item['category_id'],
+                            'domain_id' => $item['domain_id'] ?? null,
+                            'domain_name' => $item['domain_name'] ?? null,
+                        ];
+                    }
+                }
+
+                return $categories;
+            }
+
+            return [];
+
+        } catch (\Exception $e) {
+            Log::error("Error predicting ML category: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Busca atributos obrigatórios de uma categoria
+     */
+    public function getCategoryAttributes(string $categoryId): array
+    {
+        try {
+            $response = Http::timeout(10)->get(self::API_BASE_URL . "/categories/{$categoryId}/attributes");
+
+            if ($response->successful()) {
+                return $response->json();
+            }
+
+            return [];
+
+        } catch (\Exception $e) {
+            Log::error("Error fetching category attributes: " . $e->getMessage());
+            return [];
+        }
+    }
+}
