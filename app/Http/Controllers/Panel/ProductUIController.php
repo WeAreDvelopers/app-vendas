@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use App\Services\ImageSearchService;
+use App\Services\ImageProcessingService;
 
 class ProductUIController extends Controller {
     public function index(Request $r) {
@@ -137,14 +138,17 @@ class ProductUIController extends Controller {
             ->with('ok', 'Produto atualizado com sucesso!');
     }
 
-    public function uploadImages(Request $r, int $id) {
+    public function uploadImages(Request $r, int $id, ImageProcessingService $imageProcessor) {
         $product = DB::table('products')->find($id);
         abort_unless($product, 404);
 
         $r->validate([
             'images' => 'required|array|min:1|max:10',
-            'images.*' => 'required|image|mimes:jpeg,jpg,png|max:5120|dimensions:min_width=500,min_height=500'
+            'images.*' => 'required|image|mimes:jpeg,jpg,png,webp|max:5120',
+            'resize_images' => 'nullable|boolean'
         ]);
+
+        $shouldResize = $r->boolean('resize_images', false);
 
         $currentMaxSort = DB::table('product_images')
             ->where('product_id', $id)
@@ -153,27 +157,46 @@ class ProductUIController extends Controller {
         $uploadedCount = 0;
 
         foreach ($r->file('images') as $index => $file) {
-            // Gera nome único para o arquivo
-            $filename = uniqid('product_' . $id . '_') . '.' . $file->getClientOriginalExtension();
+            try {
+                // Se o usuário marcou o checkbox, processa a imagem
+                if ($shouldResize) {
+                    // Processa: redimensiona, adiciona fundo branco e garante mínimo 500x500
+                    $processedImage = $imageProcessor->processAndSaveProductImage($file, $id, 500, 500);
+                    $imagePath = $processedImage['path'];
+                } else {
+                    // Upload normal sem processamento
+                    $filename = uniqid('product_' . $id . '_') . '.' . $file->getClientOriginalExtension();
+                    $path = $file->storeAs('product_images', $filename, 'public');
+                    $imagePath = '/storage/' . $path;
+                }
 
-            // Salva o arquivo
-            $path = $file->storeAs('product_images', $filename, 'public');
+                // Insere no banco
+                DB::table('product_images')->insert([
+                    'product_id' => $id,
+                    'path' => $imagePath,
+                    'source_url' => $imagePath,
+                    'sort' => $currentMaxSort + $index + 1,
+                    'bg_removed' => false,
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
 
-            // Insere no banco
-            DB::table('product_images')->insert([
-                'product_id' => $id,
-                'path' => '/storage/' . $path,
-                'source_url' => '/storage/' . $path,
-                'sort' => $currentMaxSort + $index + 1,
-                'bg_removed' => false,
-                'created_at' => now(),
-                'updated_at' => now()
-            ]);
-
-            $uploadedCount++;
+                $uploadedCount++;
+            } catch (\Exception $e) {
+                \Log::error("Erro ao processar imagem para produto {$id}: " . $e->getMessage());
+                continue;
+            }
         }
 
-        return back()->with('ok', "{$uploadedCount} imagem(ns) adicionada(s) com sucesso!");
+        if ($uploadedCount > 0) {
+            $message = "{$uploadedCount} imagem(ns) adicionada(s) com sucesso!";
+            if ($shouldResize) {
+                $message .= " (Redimensionadas e otimizadas com fundo branco)";
+            }
+            return back()->with('ok', $message);
+        } else {
+            return back()->with('error', 'Erro ao fazer upload das imagens. Tente novamente.');
+        }
     }
 
     public function uploadReferenceImage(Request $r, int $id) {

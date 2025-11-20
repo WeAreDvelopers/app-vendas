@@ -491,8 +491,29 @@
               <div class="mb-3">
                 <label class="form-label">Selecione imagens</label>
                 <input type="file" name="images[]" class="form-control" multiple accept="image/*" required>
-                <small class="text-muted">Formatos aceitos: JPG, PNG. Tamanho mínimo: 500x500px (recomendado para Mercado Livre)</small>
+                <small class="text-muted">Formatos aceitos: JPG, PNG, WEBP</small>
               </div>
+
+              <div class="mb-3">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="resize_images" id="resizeImages" value="1">
+                  <label class="form-check-label" for="resizeImages">
+                    <strong>Redimensionar e otimizar imagens</strong>
+                  </label>
+                </div>
+                <small class="text-muted d-block mt-1">
+                  <i class="bi bi-info-circle"></i>
+                  Ao marcar esta opção, as imagens serão:
+                  <ul class="small mb-0 mt-1">
+                    <li>Redimensionadas para mínimo 500x500px (mantendo proporção)</li>
+                    <li>Adicionado fundo branco se necessário</li>
+                    <li>Convertidas para JPEG otimizado (90% qualidade)</li>
+                    <li>Centralizadas automaticamente</li>
+                  </ul>
+                  <strong class="text-primary">Recomendado para Mercado Livre</strong>
+                </small>
+              </div>
+
               <button type="submit" class="btn btn-primary">Fazer Upload</button>
             </form>
           </div>
