@@ -143,7 +143,7 @@ class ProductUIController extends Controller {
 
         $r->validate([
             'images' => 'required|array|min:1|max:10',
-            'images.*' => 'required|image|mimes:jpeg,jpg,png|max:5120|nsions:min_width=500,min_height=500'
+            'images.*' => 'required|image|mimes:jpeg,jpg,png|max:5120|dimensions:min_width=500,min_height=500'
         ]);
 
         $currentMaxSort = DB::table('product_images')
