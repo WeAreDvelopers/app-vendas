@@ -83,7 +83,19 @@
                 <td><span class="chip">{{ $imp->status }}</span></td>
                 <td>{{ $imp->processed_rows }}/{{ $imp->total_rows }}</td>
                 <td>{{ \Illuminate\Support\Carbon::parse($imp->created_at)->format('d/m/Y H:i') }}</td>
-                <td><a href="{{ route('panel.imports.show',$imp->id) }}" class="btn btn-sm btn-outline-secondary">Detalhes</a></td>
+                <td>
+                  <div class="btn-group btn-group-sm">
+                    <a href="{{ route('panel.imports.show',$imp->id) }}" class="btn btn-outline-secondary">
+                      <i class="bi bi-eye"></i>
+                    </a>
+                    <button type="button" class="btn btn-outline-danger"
+                            data-bs-toggle="modal"
+                            data-bs-target="#deleteModal{{ $imp->id }}"
+                            title="Excluir importação">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
               </tr>
             @empty
               <tr>
@@ -127,4 +139,61 @@ document.getElementById('supplierSelect').addEventListener('change', function() 
 });
 </script>
 @endpush
+
+<!-- Modais de Confirmação de Exclusão -->
+@foreach($imports as $imp)
+<div class="modal fade" id="deleteModal{{ $imp->id }}" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title">
+          <i class="bi bi-exclamation-triangle"></i> Excluir Importação
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning">
+          <i class="bi bi-exclamation-triangle"></i>
+          <strong>Atenção!</strong> Esta ação não pode ser desfeita.
+        </div>
+
+        <p class="mb-3">Você está prestes a excluir permanentemente:</p>
+
+        <div class="bg-light p-3 rounded mb-3">
+          <div class="fw-bold">Importação #{{ $imp->id }}</div>
+          <small class="text-muted">Fornecedor: {{ $imp->supplier_name }}</small><br>
+          <small class="text-muted">Tipo: {{ $imp->source_type }}</small><br>
+          <small class="text-muted">Linhas: {{ $imp->processed_rows }}/{{ $imp->total_rows }}</small>
+        </div>
+
+        <p class="mb-2"><strong>O que será excluído:</strong></p>
+        <ul>
+          <li>Registro da importação</li>
+          <li>Arquivo de origem ({{ $imp->source_type }})</li>
+          <li>Todos os {{ $imp->processed_rows }} itens importados</li>
+          <li>Todos os erros registrados</li>
+        </ul>
+
+        <p class="text-danger fw-bold mb-0">
+          <i class="bi bi-exclamation-circle"></i>
+          Tem certeza que deseja continuar?
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          <i class="bi bi-x-circle"></i> Cancelar
+        </button>
+        <form method="POST" action="{{ route('panel.imports.destroy', $imp->id) }}" class="d-inline">
+          @csrf
+          @method('DELETE')
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-trash"></i> Sim, Excluir
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+@endforeach
+
 @endsection

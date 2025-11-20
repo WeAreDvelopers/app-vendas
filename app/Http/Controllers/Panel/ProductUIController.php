@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use App\Services\ImageSearchService;
 use App\Services\ImageProcessingService;
+use App\Services\AIDescriptionService;
 
 class ProductUIController extends Controller {
     public function index(Request $r) {
@@ -478,6 +479,53 @@ class ProductUIController extends Controller {
         } catch (\Exception $e) {
             \Log::error("Erro ao excluir produto {$id}: " . $e->getMessage());
             return back()->with('error', 'Erro ao excluir produto: ' . $e->getMessage());
+        }
+    }
+
+    public function regenerateDescription(Request $r, int $id, AIDescriptionService $aiService) {
+        $product = DB::table('products')->find($id);
+        abort_unless($product, 404);
+
+        $r->validate([
+            'context' => 'nullable|string|max:1000'
+        ]);
+
+        try {
+            $context = $r->input('context', '');
+
+            // Cria um objeto simulando ProductRaw para o serviço
+            $productData = (object) [
+                'id' => $product->id,
+                'sku' => $product->sku,
+                'ean' => $product->ean,
+                'name' => $product->name,
+                'brand' => $product->brand,
+                'extra' => ['context' => $context]
+            ];
+
+            // Gera nova descrição com IA
+            $aiResult = $aiService->generateDescription($productData);
+
+            \Log::info("Descrição regenerada para produto #{$id}", [
+                'provider' => $aiResult['provider'],
+                'cost' => $aiResult['cost'] ?? 0,
+                'has_context' => !empty($context)
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'description' => $aiResult['description'],
+                'provider' => $aiResult['provider'],
+                'model' => $aiResult['model'] ?? null
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error("Erro ao regerar descrição do produto {$id}: " . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao gerar descrição: ' . $e->getMessage()
+            ], 500);
         }
     }
 }

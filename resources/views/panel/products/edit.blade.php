@@ -107,13 +107,18 @@
 
       <!-- Descrição -->
       <div class="notion-card mb-3">
-        <h5 class="mb-3">
-          <i class="bi bi-file-text text-primary"></i> Descrição
-        </h5>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="mb-0">
+            <i class="bi bi-file-text text-primary"></i> Descrição
+          </h5>
+          <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#regenerateDescriptionModal">
+            <i class="bi bi-magic"></i> Regerar com IA
+          </button>
+        </div>
 
         <div class="mb-3">
           <label class="form-label fw-semibold">Descrição do Produto</label>
-          <textarea name="description" rows="10" class="form-control @error('description') is-invalid @enderror"
+          <textarea name="description" id="productDescription" rows="10" class="form-control @error('description') is-invalid @enderror"
                     placeholder="Descreva o produto em detalhes...">{{ old('description', $product->description ?? '') }}</textarea>
           @error('description')
             <div class="invalid-feedback">{{ $message }}</div>
@@ -291,7 +296,7 @@
           <!-- Imagem Principal -->
           <div class="ml-preview-image">
             @if($images->count() > 0)
-              <img id="previewImage" src="{{ $images->first()->path }}" alt="Preview">
+              <img id="previewImage" src="{{ $images->first()->path }}" class="img-fluid" alt="Preview">
             @else
               <div class="ml-preview-no-image">
                 <i class="bi bi-image"></i>
@@ -672,6 +677,127 @@ document.addEventListener('DOMContentLoaded', function() {
     priceInput.addEventListener('input', updateMargin);
   }
 });
+
+// Regerar descrição com IA
+const regenerateBtn = document.getElementById('regenerateDescriptionBtn');
+const regenerateProgress = document.getElementById('regenerateProgress');
+const contextInput = document.getElementById('aiContext');
+
+if (regenerateBtn) {
+  regenerateBtn.addEventListener('click', async function() {
+    const context = contextInput.value.trim();
+
+    // Mostra loading
+    regenerateBtn.disabled = true;
+    regenerateBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Gerando...';
+    regenerateProgress.style.display = 'block';
+
+    try {
+      const formData = new FormData();
+      formData.append('context', context);
+      formData.append('_token', '{{ csrf_token() }}');
+
+      const response = await fetch('{{ route('panel.products.regenerate-description', $product->id) }}', {
+        method: 'POST',
+        body: formData
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Atualiza o textarea com a nova descrição
+        document.getElementById('productDescription').value = data.description;
+
+        // Fecha o modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('regenerateDescriptionModal'));
+        modal.hide();
+
+        // Mostra mensagem de sucesso
+        alert('Descrição gerada com sucesso! Revise e salve o produto.');
+      } else {
+        alert(data.message || 'Erro ao gerar descrição');
+      }
+    } catch (error) {
+      console.error('Erro:', error);
+      alert('Erro ao gerar descrição: ' + error.message);
+    } finally {
+      regenerateBtn.disabled = false;
+      regenerateBtn.innerHTML = '<i class="bi bi-magic"></i> Gerar Descrição';
+      regenerateProgress.style.display = 'none';
+    }
+  });
+}
 </script>
 @endpush
+
+<!-- Modal: Regerar Descrição com IA -->
+<div class="modal fade" id="regenerateDescriptionModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi bi-magic"></i> Regerar Descrição com IA
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info">
+          <i class="bi bi-info-circle"></i>
+          <strong>Como funciona:</strong>
+          <p class="mb-0 mt-2">
+            A IA irá gerar uma nova descrição profissional baseada nas informações do produto.
+            Você pode adicionar um contexto específico para tornar a descrição mais precisa.
+          </p>
+        </div>
+
+        <div class="mb-3">
+          <h6 class="mb-2">Informações do Produto:</h6>
+          <div class="bg-light p-3 rounded">
+            <div><strong>Nome:</strong> {{ $product->name }}</div>
+            @if($product->brand ?? false)
+            <div><strong>Marca:</strong> {{ $product->brand }}</div>
+            @endif
+            @if($product->ean ?? false)
+            <div><strong>EAN:</strong> {{ $product->ean }}</div>
+            @endif
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">
+            Contexto Adicional (Opcional)
+            <span class="text-muted fw-normal">- Deixe em branco para descrição padrão</span>
+          </label>
+          <textarea id="aiContext" class="form-control" rows="4"
+                    placeholder="Exemplo: Este produto é ideal para uso profissional em escritórios. Destaque a durabilidade e garantia estendida."></textarea>
+          <small class="text-muted">
+            <i class="bi bi-lightbulb"></i>
+            Dicas: Mencione características específicas, público-alvo, diferenciais ou aspectos que devem ser destacados na descrição.
+          </small>
+        </div>
+
+        <div class="alert alert-warning" id="regenerateProgress" style="display:none;">
+          <div class="d-flex align-items-center">
+            <div class="spinner-border spinner-border-sm me-2" role="status">
+              <span class="visually-hidden">Carregando...</span>
+            </div>
+            <div>
+              <strong>Gerando descrição com IA...</strong>
+              <p class="mb-0 small">Isso pode levar alguns segundos. Aguarde...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          <i class="bi bi-x-circle"></i> Cancelar
+        </button>
+        <button type="button" class="btn btn-primary" id="regenerateDescriptionBtn">
+          <i class="bi bi-magic"></i> Gerar Descrição
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 @endsection

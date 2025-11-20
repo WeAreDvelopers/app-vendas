@@ -109,6 +109,7 @@
             <th>Preço Custo</th>
             <th>Preço Venda</th>
             <th>Status</th>
+            <th>Ações</th>
           </tr>
         </thead>
         <tbody>
@@ -125,10 +126,18 @@
               <td>{{ $r->cost_price ? 'R$ '.number_format($r->cost_price, 2, ',', '.') : '-' }}</td>
               <td>{{ $r->sale_price ? 'R$ '.number_format($r->sale_price, 2, ',', '.') : '-' }}</td>
               <td><span class="chip chip-sm">{{ $r->status }}</span></td>
+              <td>
+                <button type="button" class="btn btn-sm btn-outline-danger"
+                        data-bs-toggle="modal"
+                        data-bs-target="#deleteItemModal{{ $r->id }}"
+                        title="Excluir item">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </td>
             </tr>
           @empty
             <tr>
-              <td colspan="9" class="text-muted text-center py-4">
+              <td colspan="10" class="text-muted text-center py-4">
                 @if($search ?? false)
                   <i class="bi bi-search"></i>
                   Nenhum produto encontrado com "{{ $search }}".
@@ -196,4 +205,57 @@ document.getElementById('processSelected').addEventListener('click', function() 
 });
 </script>
 @endpush
+
+<!-- Modais de Confirmação de Exclusão de Itens -->
+@foreach($rows as $r)
+<div class="modal fade" id="deleteItemModal{{ $r->id }}" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title">
+          <i class="bi bi-exclamation-triangle"></i> Excluir Item
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning">
+          <i class="bi bi-exclamation-triangle"></i>
+          <strong>Atenção!</strong> Esta ação não pode ser desfeita.
+        </div>
+
+        <p class="mb-3">Você está prestes a excluir permanentemente este item da importação:</p>
+
+        <div class="bg-light p-3 rounded mb-3">
+          <div class="fw-bold">{{ $r->name }}</div>
+          <small class="text-muted">SKU: {{ $r->sku }}</small><br>
+          @if($r->ean)
+          <small class="text-muted">EAN: {{ $r->ean }}</small><br>
+          @endif
+          @if($r->brand)
+          <small class="text-muted">Marca: {{ $r->brand }}</small>
+          @endif
+        </div>
+
+        <p class="text-danger fw-bold mb-0">
+          <i class="bi bi-exclamation-circle"></i>
+          Tem certeza que deseja continuar?
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          <i class="bi bi-x-circle"></i> Cancelar
+        </button>
+        <form method="POST" action="{{ route('panel.imports.items.destroy', ['importId' => $imp->id, 'itemId' => $r->id]) }}" class="d-inline">
+          @csrf
+          @method('DELETE')
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-trash"></i> Sim, Excluir
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+@endforeach
+
 @endsection

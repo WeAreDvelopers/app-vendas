@@ -14,7 +14,7 @@ class AIDescriptionService
     /**
      * Gera descrição usando Google Gemini primeiro, depois OpenAI como fallback
      */
-    public function generateDescription(ProductRaw $product): array
+    public function generateDescription(object $product): array
     {
         $prompt = $this->buildPrompt($product);
 
@@ -52,7 +52,7 @@ class AIDescriptionService
     /**
      * Tenta gerar descrição usando Google Gemini
      */
-    private function tryGemini(string $prompt, ProductRaw $product): array
+    private function tryGemini(string $prompt, object $product): array
     {
         $apiKey = config('services.gemini.key');
 
@@ -153,7 +153,7 @@ class AIDescriptionService
     /**
      * Tenta gerar descrição usando OpenAI
      */
-    private function tryOpenAI(string $prompt, ProductRaw $product): array
+    private function tryOpenAI(string $prompt, object $product): array
     {
         $apiKey = config('services.openai.key');
 
@@ -242,14 +242,25 @@ class AIDescriptionService
                "Crie descrições atrativas, detalhadas e otimizadas para SEO.";
     }
 
-    private function buildPrompt(ProductRaw $product): string
+    private function buildPrompt(object $product): string
     {
+        // Extrai contexto adicional se fornecido
+        $additionalContext = '';
+        if (isset($product->extra) && is_array($product->extra) && !empty($product->extra['context'])) {
+            $additionalContext = "\n\nContexto Adicional: {$product->extra['context']}\n" .
+                                "Leve em consideração este contexto ao criar a descrição.\n";
+        }
+
+        // Tenta acessar sale_price ou price dependendo do tipo de objeto
+        $price = $product->sale_price ?? $product->price ?? 0;
+
         return "Crie uma descrição atrativa e completa para o seguinte produto:\n\n" .
                "Nome: {$product->name}\n" .
                "Marca: " . ($product->brand ?? 'N/A') . "\n" .
                "SKU: {$product->sku}\n" .
                "EAN: " . ($product->ean ?? 'N/A') . "\n" .
-               "Preço: R$ " . number_format($product->sale_price ?? 0, 2, ',', '.') . "\n\n" .
+               "Preço: R$ " . number_format($price, 2, ',', '.') . "\n" .
+               $additionalContext . "\n" .
                "A descrição deve:\n" .
                "- Ter entre 200-400 palavras\n" .
                "- Destacar os principais benefícios do produto\n" .
@@ -269,7 +280,7 @@ class AIDescriptionService
                "[Parágrafo de fechamento com CTA]";
     }
 
-    private function fallbackDescription(ProductRaw $product): string
+    private function fallbackDescription(object $product): string
     {
         $brand = $product->brand ? " da marca {$product->brand}" : '';
         $ean = $product->ean ? " (EAN: {$product->ean})" : '';

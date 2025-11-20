@@ -102,7 +102,7 @@
                 </div>
               </div>
             </div>
-            <span class="chip">v0.1 MVP</span>
+            <!-- <span class="chip">v0.1 MVP</span> -->
           </div>
         </div>
       </div>

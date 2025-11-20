@@ -31,9 +31,11 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::get('/imports',           [ImportUIController::class, 'index'])->name('imports.index');
     Route::post('/imports',          [ImportUIController::class, 'store'])->name('imports.store');
     Route::get('/imports/{id}',      [ImportUIController::class, 'show'])->name('imports.show');
+    Route::delete('/imports/{id}',   [ImportUIController::class, 'destroy'])->name('imports.destroy');
     Route::post('/imports/{id}/process', [ImportUIController::class, 'processProducts'])->name('imports.process');
     Route::get('/imports/{id}/errors', [ImportUIController::class, 'errors'])->name('imports.errors');
     Route::get('/imports/{id}/errors/export', [ImportUIController::class, 'exportErrors'])->name('imports.errors.export');
+    Route::delete('/imports/{importId}/items/{itemId}', [ImportUIController::class, 'destroyItem'])->name('imports.items.destroy');
 
     // Products, Listings, Orders
     Route::get('/products',          [ProductUIController::class, 'index'])->name('products.index');
@@ -41,6 +43,7 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::get('/products/{id}/edit', [ProductUIController::class, 'edit'])->name('products.edit');
     Route::put('/products/{id}',     [ProductUIController::class, 'update'])->name('products.update');
     Route::delete('/products/{id}',  [ProductUIController::class, 'destroy'])->name('products.destroy');
+    Route::post('/products/{id}/regenerate-description', [ProductUIController::class, 'regenerateDescription'])->name('products.regenerate-description');
     Route::post('/products/{id}/images', [ProductUIController::class, 'uploadImages'])->name('products.images.upload');
     Route::post('/products/{id}/images/search', [ProductUIController::class, 'searchImages'])->name('products.images.search');
     Route::post('/products/{id}/images/download', [ProductUIController::class, 'downloadSelectedImages'])->name('products.images.download');

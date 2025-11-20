@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Panel;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use App\Jobs\ImportSupplierFile;
 
 class ImportUIController extends Controller {
@@ -174,5 +175,59 @@ class ImportUIController extends Controller {
         }
 
         return back()->with('ok', count($productIds) . ' produto(s) enviado(s) para processamento com IA!');
+    }
+
+    public function destroy(int $id) {
+        $import = DB::table('supplier_imports')->find($id);
+        abort_unless($import, 404);
+
+        try {
+            // 1. Remove o arquivo de importação do storage
+            if ($import->source_file) {
+                Storage::disk('local')->delete($import->source_file);
+            }
+
+            // 2. Remove todos os erros relacionados
+            DB::table('import_errors')->where('supplier_import_id', $id)->delete();
+
+            // 3. Remove todos os produtos raw relacionados
+            DB::table('products_raw')->where('supplier_import_id', $id)->delete();
+
+            // 4. Remove a importação
+            DB::table('supplier_imports')->where('id', $id)->delete();
+
+            \Log::info("Importação #{$id} excluída com sucesso");
+
+            return redirect()->route('panel.imports.index')
+                ->with('ok', 'Importação excluída com sucesso!');
+
+        } catch (\Exception $e) {
+            \Log::error("Erro ao excluir importação {$id}: " . $e->getMessage());
+            return back()->with('error', 'Erro ao excluir importação: ' . $e->getMessage());
+        }
+    }
+
+    public function destroyItem(int $importId, int $itemId) {
+        $import = DB::table('supplier_imports')->find($importId);
+        abort_unless($import, 404);
+
+        $item = DB::table('products_raw')
+            ->where('id', $itemId)
+            ->where('supplier_import_id', $importId)
+            ->first();
+        abort_unless($item, 404);
+
+        try {
+            // Remove o item
+            DB::table('products_raw')->where('id', $itemId)->delete();
+
+            \Log::info("Item #{$itemId} da importação #{$importId} excluído com sucesso");
+
+            return back()->with('ok', 'Item excluído com sucesso!');
+
+        } catch (\Exception $e) {
+            \Log::error("Erro ao excluir item {$itemId}: " . $e->getMessage());
+            return back()->with('error', 'Erro ao excluir item: ' . $e->getMessage());
+        }
     }
 }
