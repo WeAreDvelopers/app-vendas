@@ -79,6 +79,29 @@
             <input name="q" value="{{ request('q') }}" type="search" class="form-control form-control-sm search-input" placeholder="Buscar...">
           </form>
           <div class="d-flex align-items-center gap-2">
+            <!-- Notification Bell -->
+            <div class="dropdown">
+              <button class="btn btn-sm btn-outline-secondary position-relative" type="button" id="notificationDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-bell"></i>
+                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" id="notificationBadge" style="display: none;">
+                  0
+                </span>
+              </button>
+              <div class="dropdown-menu dropdown-menu-end p-0" aria-labelledby="notificationDropdown" style="min-width: 380px; max-height: 500px;">
+                <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
+                  <h6 class="mb-0">Notificações</h6>
+                  <button type="button" class="btn btn-sm btn-link text-decoration-none" id="markAllRead" style="display: none;">
+                    Marcar todas como lidas
+                  </button>
+                </div>
+                <div id="notificationList" style="max-height: 400px; overflow-y: auto;">
+                  <div class="text-center text-muted p-4">
+                    <i class="bi bi-bell-slash fs-3"></i>
+                    <p class="mb-0 mt-2">Nenhuma notificação</p>
+                  </div>
+                </div>
+              </div>
+            </div>
             <span class="chip">v0.1 MVP</span>
           </div>
         </div>
@@ -124,6 +147,331 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- Notification System -->
+<script>
+(function() {
+  'use strict';
+
+  // Configurações
+  const POLLING_INTERVAL = 10000; // 10 segundos
+  const NOTIFICATION_SOUND_ENABLED = true;
+
+  let lastNotificationCount = 0;
+  let pollingTimer = null;
+  let isPolling = false;
+
+  // Elementos DOM
+  const notificationBadge = document.getElementById('notificationBadge');
+  const notificationList = document.getElementById('notificationList');
+  const markAllReadBtn = document.getElementById('markAllRead');
+
+  /**
+   * Busca notificações do servidor
+   */
+  async function fetchNotifications() {
+    if (isPolling) return; // Evita múltiplas chamadas simultâneas
+
+    isPolling = true;
+
+    try {
+      const response = await fetch('{{ route("panel.notifications.index") }}', {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Erro ao buscar notificações');
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        updateNotifications(data.notifications, data.unread_count);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar notificações:', error);
+    } finally {
+      isPolling = false;
+    }
+  }
+
+  /**
+   * Atualiza a interface com as notificações
+   */
+  function updateNotifications(notifications, unreadCount) {
+    // Atualiza badge
+    if (unreadCount > 0) {
+      notificationBadge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+      notificationBadge.style.display = 'inline-block';
+      markAllReadBtn.style.display = 'inline-block';
+    } else {
+      notificationBadge.style.display = 'none';
+      markAllReadBtn.style.display = 'none';
+    }
+
+    // Toca som se houver novas notificações
+    if (NOTIFICATION_SOUND_ENABLED && unreadCount > lastNotificationCount && lastNotificationCount > 0) {
+      playNotificationSound();
+    }
+    lastNotificationCount = unreadCount;
+
+    // Renderiza lista de notificações
+    if (notifications.length === 0) {
+      notificationList.innerHTML = `
+        <div class="text-center text-muted p-4">
+          <i class="bi bi-bell-slash fs-3"></i>
+          <p class="mb-0 mt-2">Nenhuma notificação</p>
+        </div>
+      `;
+    } else {
+      notificationList.innerHTML = notifications.map(notification => renderNotification(notification)).join('');
+    }
+  }
+
+  /**
+   * Renderiza uma notificação individual
+   */
+  function renderNotification(notification) {
+    const typeIcons = {
+      success: 'bi-check-circle-fill text-success',
+      info: 'bi-info-circle-fill text-info',
+      warning: 'bi-exclamation-triangle-fill text-warning',
+      error: 'bi-x-circle-fill text-danger'
+    };
+
+    const icon = notification.icon || typeIcons[notification.type] || 'bi-bell-fill';
+    const timeAgo = formatTimeAgo(new Date(notification.created_at));
+
+    return `
+      <div class="notification-item p-3 border-bottom ${notification.read ? 'read' : 'unread'}" data-id="${notification.id}">
+        <div class="d-flex gap-3">
+          <div>
+            <i class="bi ${icon} fs-5"></i>
+          </div>
+          <div class="flex-grow-1">
+            <div class="d-flex justify-content-between align-items-start">
+              <strong class="d-block mb-1">${escapeHtml(notification.title)}</strong>
+              <small class="text-muted">${timeAgo}</small>
+            </div>
+            <p class="mb-2 small">${escapeHtml(notification.message)}</p>
+            ${notification.action_url ? `
+              <a href="${notification.action_url}" class="btn btn-sm btn-outline-primary">
+                ${escapeHtml(notification.action_text || 'Ver detalhes')}
+              </a>
+            ` : ''}
+            <div class="mt-2">
+              <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 mark-read-btn" data-id="${notification.id}">
+                <i class="bi bi-check2"></i> Marcar como lida
+              </button>
+              <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 ms-3 delete-btn" data-id="${notification.id}">
+                <i class="bi bi-trash"></i> Remover
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Marca notificação como lida
+   */
+  async function markAsRead(id) {
+    try {
+      const response = await fetch(`/panel/notifications/${id}/read`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': '{{ csrf_token() }}',
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      });
+
+      if (response.ok) {
+        fetchNotifications(); // Atualiza lista
+      }
+    } catch (error) {
+      console.error('Erro ao marcar notificação como lida:', error);
+    }
+  }
+
+  /**
+   * Marca todas como lidas
+   */
+  async function markAllAsRead() {
+    try {
+      const response = await fetch('/panel/notifications/read-all', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': '{{ csrf_token() }}',
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      });
+
+      if (response.ok) {
+        fetchNotifications(); // Atualiza lista
+      }
+    } catch (error) {
+      console.error('Erro ao marcar todas como lidas:', error);
+    }
+  }
+
+  /**
+   * Deleta notificação
+   */
+  async function deleteNotification(id) {
+    try {
+      const response = await fetch(`/panel/notifications/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': '{{ csrf_token() }}',
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      });
+
+      if (response.ok) {
+        fetchNotifications(); // Atualiza lista
+      }
+    } catch (error) {
+      console.error('Erro ao deletar notificação:', error);
+    }
+  }
+
+  /**
+   * Toca som de notificação
+   */
+  function playNotificationSound() {
+    // Cria um beep curto usando Web Audio API
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    oscillator.frequency.value = 800;
+    oscillator.type = 'sine';
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.2);
+  }
+
+  /**
+   * Formata tempo relativo
+   */
+  function formatTimeAgo(date) {
+    const seconds = Math.floor((new Date() - date) / 1000);
+
+    if (seconds < 60) return 'agora mesmo';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}min atrás`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h atrás`;
+    return `${Math.floor(seconds / 86400)}d atrás`;
+  }
+
+  /**
+   * Escapa HTML para prevenir XSS
+   */
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  /**
+   * Inicia o polling
+   */
+  function startPolling() {
+    fetchNotifications(); // Busca imediatamente
+    pollingTimer = setInterval(fetchNotifications, POLLING_INTERVAL);
+  }
+
+  /**
+   * Para o polling
+   */
+  function stopPolling() {
+    if (pollingTimer) {
+      clearInterval(pollingTimer);
+      pollingTimer = null;
+    }
+  }
+
+  // Event listeners
+  document.addEventListener('DOMContentLoaded', function() {
+    // Inicia polling quando a página carrega
+    startPolling();
+
+    // Para polling quando a aba fica inativa (economiza recursos)
+    document.addEventListener('visibilitychange', function() {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        startPolling();
+      }
+    });
+
+    // Marcar todas como lidas
+    markAllReadBtn.addEventListener('click', function() {
+      markAllAsRead();
+    });
+
+    // Event delegation para botões das notificações
+    notificationList.addEventListener('click', function(e) {
+      const markReadBtn = e.target.closest('.mark-read-btn');
+      const deleteBtn = e.target.closest('.delete-btn');
+
+      if (markReadBtn) {
+        const id = markReadBtn.dataset.id;
+        markAsRead(id);
+      }
+
+      if (deleteBtn) {
+        const id = deleteBtn.dataset.id;
+        if (confirm('Deseja remover esta notificação?')) {
+          deleteNotification(id);
+        }
+      }
+    });
+  });
+
+  // Para polling quando a janela fecha
+  window.addEventListener('beforeunload', function() {
+    stopPolling();
+  });
+})();
+</script>
+
+<style>
+.notification-item {
+  transition: background-color 0.2s;
+  cursor: pointer;
+}
+
+.notification-item:hover {
+  background-color: #f8f9fa;
+}
+
+.notification-item.unread {
+  background-color: #e7f3ff;
+}
+
+.notification-item.read {
+  opacity: 0.7;
+}
+
+#notificationBadge {
+  font-size: 0.65rem;
+  padding: 0.25em 0.4em;
+}
+</style>
+
 @stack('scripts')
 </body>
 </html>

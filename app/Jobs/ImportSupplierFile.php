@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use App\Models\SupplierImport;
 use App\Models\ImportError;
+use App\Helpers\NotificationHelper;
 
 class ImportSupplierFile implements ShouldQueue {
   use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -101,6 +102,26 @@ class ImportSupplierFile implements ShouldQueue {
         'processed_rows' => $this->validRows
       ]);
 
+      // Envia notificação de conclusão
+      if ($this->validRows > 0) {
+        NotificationHelper::success(
+          'Importação Concluída',
+          "Importação #{$import->id} finalizada! {$this->validRows} de " . ($rowNumber - 1) . " produtos processados.",
+          "/panel/imports/{$import->id}",
+          'Ver Detalhes'
+        );
+      }
+
+      // Envia notificação se houver erros
+      if (count($this->errors) > 0) {
+        NotificationHelper::warning(
+          'Importação com Erros',
+          "Importação #{$import->id} concluída com " . count($this->errors) . " erro(s). Verifique os detalhes.",
+          "/panel/imports/{$import->id}/errors",
+          'Ver Erros'
+        );
+      }
+
       // Dispatcha jobs de enriquecimento apenas para linhas válidas
       foreach ($rows as $row) {
         if (!empty($row['sku'])) {
@@ -112,6 +133,15 @@ class ImportSupplierFile implements ShouldQueue {
         'status' => 'failed',
         'error' => $e->getMessage()
       ]);
+
+      // Envia notificação de erro
+      NotificationHelper::error(
+        'Erro na Importação',
+        "Falha ao processar importação #{$import->id}: {$e->getMessage()}",
+        "/panel/imports/{$import->id}",
+        'Ver Detalhes'
+      );
+
       throw $e;
     }
   }

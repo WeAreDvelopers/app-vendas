@@ -1,6 +1,7 @@
 <?php
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\Panel\DashboardController;
 use App\Http\Controllers\Panel\ImportUIController;
 use App\Http\Controllers\Panel\ProductUIController;
@@ -58,6 +59,12 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
 
     // Monitor
     Route::get('/monitor/queues',    [MonitorController::class, 'index'])->name('monitor.queues');
+
+    // Notifications API
+    Route::get('/notifications',              [NotificationController::class, 'index'])->name('notifications.index');
+    Route::post('/notifications/{id}/read',   [NotificationController::class, 'markAsRead'])->name('notifications.read');
+    Route::post('/notifications/read-all',    [NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
+    Route::delete('/notifications/{id}',      [NotificationController::class, 'destroy'])->name('notifications.destroy');
 });
 
 Route::post('/import/supplier', [ImportController::class,'store']);

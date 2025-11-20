@@ -55,19 +55,81 @@ class ProductUIController extends Controller {
 
     public function update(Request $r, int $id) {
         $r->validate([
+            // Campos básicos
             'name' => 'required|string|max:255',
+            'ean' => 'nullable|string|max:20',
+            'brand' => 'nullable|string|max:100',
+            'category' => 'nullable|string|max:100',
+
+            // Campos do Mercado Livre
+            'title' => 'nullable|string|max:60',
+            'condition' => 'required|in:new,used',
+            'warranty' => 'nullable|string|max:50',
+            'video_url' => 'nullable|url',
+
+            // Descrição
             'description' => 'nullable|string',
-            'price' => 'nullable|numeric|min:0',
+
+            // Preço e estoque
+            'price' => 'required|numeric|min:0',
             'cost_price' => 'nullable|numeric|min:0',
-            'stock' => 'nullable|integer|min:0',
+            'stock' => 'required|integer|min:0',
+
+            // Dimensões e peso (obrigatórios para ML)
+            'weight' => 'required|numeric|min:0',
+            'width' => 'required|numeric|min:0',
+            'height' => 'required|numeric|min:0',
+            'length' => 'required|numeric|min:0',
+        ], [
+            // Mensagens customizadas em português
+            'name.required' => 'O nome do produto é obrigatório.',
+            'title.max' => 'O título do anúncio deve ter no máximo 60 caracteres.',
+            'condition.required' => 'A condição do produto é obrigatória.',
+            'condition.in' => 'A condição deve ser "novo" ou "usado".',
+            'price.required' => 'O preço de venda é obrigatório.',
+            'price.min' => 'O preço deve ser maior ou igual a zero.',
+            'stock.required' => 'A quantidade em estoque é obrigatória.',
+            'stock.min' => 'O estoque não pode ser negativo.',
+            'weight.required' => 'O peso é obrigatório para o Mercado Livre.',
+            'weight.min' => 'O peso deve ser maior que zero.',
+            'width.required' => 'A largura é obrigatória para o Mercado Livre.',
+            'width.min' => 'A largura deve ser maior que zero.',
+            'height.required' => 'A altura é obrigatória para o Mercado Livre.',
+            'height.min' => 'A altura deve ser maior que zero.',
+            'length.required' => 'O comprimento é obrigatório para o Mercado Livre.',
+            'length.min' => 'O comprimento deve ser maior que zero.',
+            'video_url.url' => 'A URL do vídeo deve ser válida.',
         ]);
 
+        // Atualiza o produto com todos os campos
         DB::table('products')->where('id', $id)->update([
+            // Campos básicos
             'name' => $r->name,
+            'ean' => $r->ean,
+            'brand' => $r->brand,
+            'category' => $r->category,
+
+            // Campos do Mercado Livre
+            'title' => $r->title,
+            'condition' => $r->condition,
+            'warranty' => $r->warranty,
+            'video_url' => $r->video_url,
+
+            // Descrição
             'description' => $r->description,
+
+            // Preço e estoque
             'price' => $r->price,
             'cost_price' => $r->cost_price,
-            'stock' => $r->stock ?? 0,
+            'stock' => $r->stock,
+
+            // Dimensões e peso
+            'weight' => $r->weight,
+            'width' => $r->width,
+            'height' => $r->height,
+            'length' => $r->length,
+
+            // Atualiza timestamp
             'updated_at' => now()
         ]);
 

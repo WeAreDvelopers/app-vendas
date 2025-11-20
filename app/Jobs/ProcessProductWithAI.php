@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 use App\Models\ProductRaw;
 use App\Services\AIDescriptionService;
 use App\Services\ImageSearchService;
+use App\Helpers\NotificationHelper;
 
 class ProcessProductWithAI implements ShouldQueue
 {
@@ -68,6 +69,14 @@ class ProcessProductWithAI implements ShouldQueue
                 'cost' => $aiResult['cost'] ?? 0
             ]);
 
+            // Envia notificação de sucesso
+            NotificationHelper::success(
+                'Produto Processado com IA',
+                "'{$product->name}' foi processado com sucesso! Descrição gerada e produto pronto para edição.",
+                "/panel/products/{$productId}",
+                'Ver Produto'
+            );
+
         } catch (\Exception $e) {
             $product->update([
                 'status' => 'ai_failed',
@@ -78,6 +87,15 @@ class ProcessProductWithAI implements ShouldQueue
             ]);
 
             Log::error("Failed to process product {$this->productRawId}: " . $e->getMessage());
+
+            // Envia notificação de erro
+            NotificationHelper::error(
+                'Erro no Processamento IA',
+                "Falha ao processar '{$product->name}': {$e->getMessage()}",
+                '/panel/imports',
+                'Ver Importações'
+            );
+
             throw $e;
         }
     }
