@@ -8,12 +8,30 @@ use App\Jobs\ImportSupplierFile;
 
 class ImportUIController extends Controller {
     public function index(Request $r) {
-        $imports = DB::table('supplier_imports')
-              ->orderByDesc('id')
+        $search = trim($r->get('q', ''));
+
+        $query = DB::table('supplier_imports');
+
+        if ($search) {
+            $query->where(function($q) use ($search) {
+                $q->where('supplier_name', 'like', "%$search%")
+                  ->orWhere('id', 'like', "%$search%")
+                  ->orWhere('source_type', 'like', "%$search%")
+                  ->orWhere('status', 'like', "%$search%");
+            });
+        }
+
+        $imports = $query->orderByDesc('id')
               ->paginate(12)
               ->withQueryString();
+
         $suppliers = \App\Models\Supplier::where('active', true)->orderBy('name')->get();
-        return view('panel.imports.index', ['imports' => $imports, 'suppliers' => $suppliers]);
+
+        return view('panel.imports.index', [
+            'imports' => $imports,
+            'suppliers' => $suppliers,
+            'search' => $search
+        ]);
     }
 
     public function store(Request $r) {
@@ -48,13 +66,29 @@ class ImportUIController extends Controller {
         return back()->with('ok','Importação enviada para a fila!');
     }
 
-    public function show(int $id) {
+    public function show(int $id, Request $r) {
         $imp = DB::table('supplier_imports')->find($id);
         abort_unless($imp, 404);
-        $rows = DB::table('products_raw')->where('supplier_import_id',$id)
-                  ->orderByDesc('id')->paginate(20)->withQueryString();
+
+        $search = trim($r->get('q', ''));
+
+        $query = DB::table('products_raw')->where('supplier_import_id', $id);
+
+        if ($search) {
+            $query->where(function($q) use ($search) {
+                $q->where('name', 'like', "%$search%")
+                  ->orWhere('sku', 'like', "%$search%")
+                  ->orWhere('ean', 'like', "%$search%")
+                  ->orWhere('brand', 'like', "%$search%")
+                  ->orWhere('status', 'like', "%$search%");
+            });
+        }
+
+        $rows = $query->orderByDesc('id')->paginate(20)->withQueryString();
+
         $errorsCount = DB::table('import_errors')->where('supplier_import_id', $id)->count();
-        return view('panel.imports.show', compact('imp','rows', 'errorsCount'));
+
+        return view('panel.imports.show', compact('imp', 'rows', 'errorsCount', 'search'));
     }
 
     public function errors(int $id) {

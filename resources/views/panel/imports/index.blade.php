@@ -36,9 +36,41 @@
   </div>
   <div class="col-lg-8">
     <div class="notion-card">
-      <div class="d-flex align-items-center justify-content-between mb-2">
+      <div class="d-flex align-items-center justify-content-between mb-3">
         <div class="fw-semibold">Histórico</div>
+
+        <!-- Campo de Busca -->
+        <form method="GET" action="{{ route('panel.imports.index') }}" class="d-flex gap-2">
+          <div class="input-group input-group-sm" style="width: 300px;">
+            <input type="text"
+                   name="q"
+                   class="form-control"
+                   placeholder="Buscar por fornecedor, ID, tipo ou status..."
+                   value="{{ $search ?? '' }}"
+                   autocomplete="off">
+            <button type="submit" class="btn btn-outline-secondary">
+              <i class="bi bi-search"></i>
+            </button>
+            @if($search ?? false)
+              <a href="{{ route('panel.imports.index') }}" class="btn btn-outline-secondary" title="Limpar busca">
+                <i class="bi bi-x-circle"></i>
+              </a>
+            @endif
+          </div>
+        </form>
       </div>
+
+      @if($search ?? false)
+        <div class="alert alert-info alert-dismissible fade show mb-3">
+          <i class="bi bi-filter-circle"></i>
+          Mostrando resultados para: <strong>{{ $search }}</strong>
+          <a href="{{ route('panel.imports.index') }}" class="btn btn-sm btn-outline-primary ms-2">
+            Limpar filtro
+          </a>
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      @endif
+
       <div class="table-responsive">
         <table class="table align-middle">
           <thead><tr><th>ID</th><th>Fornecedor</th><th>Tipo</th><th>Status</th><th>Linhas</th><th>Quando</th><th></th></tr></thead>
@@ -54,7 +86,21 @@
                 <td><a href="{{ route('panel.imports.show',$imp->id) }}" class="btn btn-sm btn-outline-secondary">Detalhes</a></td>
               </tr>
             @empty
-              <tr><td colspan="7" class="text-muted">Nenhuma importação ainda.</td></tr>
+              <tr>
+                <td colspan="7" class="text-muted text-center py-4">
+                  @if($search ?? false)
+                    <i class="bi bi-search"></i>
+                    Nenhuma importação encontrada com "{{ $search }}".
+                    <div class="mt-2">
+                      <a href="{{ route('panel.imports.index') }}" class="btn btn-sm btn-outline-primary">
+                        Ver todas as importações
+                      </a>
+                    </div>
+                  @else
+                    Nenhuma importação ainda.
+                  @endif
+                </td>
+              </tr>
             @endforelse
           </tbody>
         </table>
