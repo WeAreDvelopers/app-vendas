@@ -40,6 +40,7 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::get('/products/{id}',     [ProductUIController::class, 'show'])->name('products.show');
     Route::get('/products/{id}/edit', [ProductUIController::class, 'edit'])->name('products.edit');
     Route::put('/products/{id}',     [ProductUIController::class, 'update'])->name('products.update');
+    Route::delete('/products/{id}',  [ProductUIController::class, 'destroy'])->name('products.destroy');
     Route::post('/products/{id}/images', [ProductUIController::class, 'uploadImages'])->name('products.images.upload');
     Route::post('/products/{id}/images/search', [ProductUIController::class, 'searchImages'])->name('products.images.search');
     Route::post('/products/{id}/images/download', [ProductUIController::class, 'downloadSelectedImages'])->name('products.images.download');

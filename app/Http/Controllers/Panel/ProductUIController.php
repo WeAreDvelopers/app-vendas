@@ -443,4 +443,41 @@ class ProductUIController extends Controller {
             return back()->with('error', 'Erro ao remover imagens: ' . $e->getMessage());
         }
     }
+
+    public function destroy(int $id) {
+        $product = DB::table('products')->find($id);
+        abort_unless($product, 404);
+
+        try {
+            // 1. Remove todas as imagens do storage
+            $images = DB::table('product_images')->where('product_id', $id)->get();
+            foreach ($images as $image) {
+                if ($image->path) {
+                    $filePath = str_replace('/storage/', '', $image->path);
+                    Storage::disk('public')->delete($filePath);
+                }
+            }
+
+            // 2. Remove imagem de referência se existir
+            if ($product->reference_image_path) {
+                $refPath = str_replace('/storage/', '', $product->reference_image_path);
+                Storage::disk('public')->delete($refPath);
+            }
+
+            // 3. Remove as imagens do banco de dados
+            DB::table('product_images')->where('product_id', $id)->delete();
+
+            // 4. Remove o produto do banco de dados
+            DB::table('products')->where('id', $id)->delete();
+
+            \Log::info("Produto #{$id} excluído com sucesso, incluindo {$images->count()} imagens do storage");
+
+            return redirect()->route('panel.products.index')
+                ->with('ok', 'Produto excluído com sucesso!');
+
+        } catch (\Exception $e) {
+            \Log::error("Erro ao excluir produto {$id}: " . $e->getMessage());
+            return back()->with('error', 'Erro ao excluir produto: ' . $e->getMessage());
+        }
+    }
 }

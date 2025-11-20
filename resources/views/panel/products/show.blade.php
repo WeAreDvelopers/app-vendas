@@ -278,8 +278,8 @@
         <a href="{{ route('panel.mercado-livre.prepare', $product->id) }}" class="btn btn-outline-success">
           <i class="bi bi-box-arrow-up"></i> Publicar no ML
         </a>
-        <button type="button" class="btn btn-outline-danger" disabled>
-          <i class="bi bi-trash"></i> Excluir
+        <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteProductModal">
+          <i class="bi bi-trash"></i> Excluir Produto
         </button>
       </div>
     </div>
@@ -854,4 +854,58 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 @endpush
+
+<!-- Modal: Confirmar Exclusão do Produto -->
+<div class="modal fade" id="deleteProductModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title">
+          <i class="bi bi-exclamation-triangle"></i> Excluir Produto
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning">
+          <i class="bi bi-exclamation-triangle"></i>
+          <strong>Atenção!</strong> Esta ação não pode ser desfeita.
+        </div>
+
+        <p class="mb-3">Você está prestes a excluir permanentemente o produto:</p>
+
+        <div class="bg-light p-3 rounded mb-3">
+          <div class="fw-bold">{{ $product->name }}</div>
+          <small class="text-muted">SKU: {{ $product->sku }}</small>
+        </div>
+
+        <p class="mb-2"><strong>O que será excluído:</strong></p>
+        <ul>
+          <li>Dados do produto no banco de dados</li>
+          <li>{{ $images->count() }} imagem(ns) do storage</li>
+          @if($product->reference_image_path)
+          <li>Imagem de referência</li>
+          @endif
+        </ul>
+
+        <p class="text-danger fw-bold mb-0">
+          <i class="bi bi-exclamation-circle"></i>
+          Tem certeza que deseja continuar?
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          <i class="bi bi-x-circle"></i> Cancelar
+        </button>
+        <form method="POST" action="{{ route('panel.products.destroy', $product->id) }}" class="d-inline">
+          @csrf
+          @method('DELETE')
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-trash"></i> Sim, Excluir Produto
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
 @endsection
