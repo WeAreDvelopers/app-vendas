@@ -328,6 +328,19 @@
           @endif
 
           <div class="mb-3">
+            <label class="form-label fw-semibold">
+              Palavras-chave adicionais (Opcional)
+              <span class="text-muted fw-normal">- Para refinar a busca</span>
+            </label>
+            <input type="text" id="searchContext" class="form-control"
+                   placeholder="Ex: vista frontal, fundo branco, alta resolução">
+            <small class="text-muted">
+              <i class="bi bi-lightbulb"></i>
+              Adicione termos específicos para melhorar os resultados. Exemplos: "fundo branco", "vista frontal", "embalagem", "alta qualidade"
+            </small>
+          </div>
+
+          <div class="mb-3">
             <label class="form-label">Quantidade de imagens</label>
             <select name="limit" id="searchLimit" class="form-select">
               <option value="3">3 imagens</option>
@@ -647,6 +660,7 @@ document.addEventListener('DOMContentLoaded', function() {
   searchBtn.addEventListener('click', async function() {
     const limit = document.getElementById('searchLimit').value;
     const useSimilarity = document.getElementById('useSimilarity').checked;
+    const searchContext = document.getElementById('searchContext').value.trim();
 
     // Mostra loading
     searchBtn.disabled = true;
@@ -657,6 +671,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const formData = new FormData();
       formData.append('limit', limit);
       formData.append('use_similarity', useSimilarity ? '1' : '0');
+      formData.append('context', searchContext);
       formData.append('_token', '{{ csrf_token() }}');
 
       const response = await fetch(`/panel/products/${productId}/images/search`, {

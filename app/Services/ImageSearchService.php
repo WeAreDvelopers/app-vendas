@@ -74,9 +74,9 @@ class ImageSearchService
     /**
      * Busca imagens para um produto específico
      */
-    public function searchForProduct($product, bool $useSimilarityFilter = true): array
+    public function searchForProduct($product, bool $useSimilarityFilter = true, string $context = ''): array
     {
-        $queries = $this->buildSearchQueries($product);
+        $queries = $this->buildSearchQueries($product, $context);
 
         Log::info("Iniciando busca de imagens para produto", [
             'product_id' => $product->id ?? null,
@@ -86,7 +86,8 @@ class ImageSearchService
             'queries_count' => count($queries),
             'queries' => $queries,
             'use_similarity' => $useSimilarityFilter,
-            'reference_image' => $product->reference_image_path ?? null
+            'reference_image' => $product->reference_image_path ?? null,
+            'context' => $context
         ]);
 
         $images = [];
@@ -157,9 +158,15 @@ class ImageSearchService
     /**
      * Constrói queries de busca otimizadas
      */
-    private function buildSearchQueries($product): array
+    private function buildSearchQueries($product, string $context = ''): array
     {
         $queries = [];
+
+        // Prepara o contexto adicional
+        $contextSuffix = '';
+        if (!empty($context)) {
+            $contextSuffix = ' ' . trim($context);
+        }
 
         // Query 1: EAN apenas números (mais preciso)
         // Remove tudo que não for número do EAN para maior precisão
@@ -167,12 +174,12 @@ class ImageSearchService
             $eanNumerico = preg_replace('/\D/', '', $product->ean);
 
             if (strlen($eanNumerico) >= 8) { // EAN válido tem no mínimo 8 dígitos
-                // Busca com EAN + produto para filtrar melhor os resultados
-                $queries[] = $eanNumerico . ' produto';
+                // Busca com EAN + produto + contexto para filtrar melhor os resultados
+                $queries[] = $eanNumerico . ' produto' . $contextSuffix;
 
                 // Se tiver marca, adiciona para maior precisão
                 if (!empty($product->brand)) {
-                    $queries[] = $eanNumerico . ' ' . $product->brand;
+                    $queries[] = $eanNumerico . ' ' . $product->brand . $contextSuffix;
                 }
             }
         }
@@ -181,13 +188,13 @@ class ImageSearchService
         if (!empty($product->brand) && !empty($product->name)) {
             // Limpa o nome de caracteres especiais que podem atrapalhar a busca
             $nomeLimpo = $this->cleanSearchTerm($product->name);
-            $queries[] = $product->brand . ' ' . $nomeLimpo . ' produto';
+            $queries[] = $product->brand . ' ' . $nomeLimpo . ' produto' . $contextSuffix;
         }
 
         // Query 3: Nome completo limpo
         if (!empty($product->name)) {
             $nomeLimpo = $this->cleanSearchTerm($product->name);
-            $queries[] = $nomeLimpo . ' produto';
+            $queries[] = $nomeLimpo . ' produto' . $contextSuffix;
         }
 
         // Query 4: SKU apenas alfanuméricos (menos confiável, mas útil)
@@ -196,11 +203,11 @@ class ImageSearchService
             $skuLimpo = preg_replace('/[^a-zA-Z0-9]/', '', $product->sku);
 
             if (strlen($skuLimpo) >= 3) { // SKU muito curto pode gerar resultados irrelevantes
-                $queries[] = $skuLimpo . ' produto';
+                $queries[] = $skuLimpo . ' produto' . $contextSuffix;
 
                 // Se tiver marca, combina para melhor precisão
                 if (!empty($product->brand)) {
-                    $queries[] = $product->brand . ' ' . $skuLimpo;
+                    $queries[] = $product->brand . ' ' . $skuLimpo . $contextSuffix;
                 }
             }
         }

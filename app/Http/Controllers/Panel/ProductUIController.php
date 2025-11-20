@@ -256,17 +256,20 @@ class ProductUIController extends Controller {
 
         $r->validate([
             'limit' => 'required|integer|min:1|max:10',
+            'context' => 'nullable|string|max:500',
         ]);
 
         try {
             $limit = $r->input('limit', 5);
             $useSimilarity = $r->boolean('use_similarity', false);
+            $context = $r->input('context', '');
 
             \Log::info("Iniciando busca de imagens", [
                 'product_id' => $id,
                 'limit' => $limit,
                 'use_similarity' => $useSimilarity,
-                'has_reference' => !empty($product->reference_image_path)
+                'has_reference' => !empty($product->reference_image_path),
+                'has_context' => !empty($context)
             ]);
 
             // Verifica se tem as configurações necessárias
@@ -285,7 +288,7 @@ class ProductUIController extends Controller {
             }
 
             // Busca imagens usando o serviço
-            $searchResults = $imageService->searchForProduct($product, $useSimilarity);
+            $searchResults = $imageService->searchForProduct($product, $useSimilarity, $context);
 
             \Log::info("Busca retornou {count} resultados", ['count' => count($searchResults)]);
 
