@@ -307,7 +307,8 @@ class MercadoLivreService
 
         // Prepara imagens (máximo 10)
         $pictures = [];
-        foreach (array_slice($images, 0, 10) as $image) {
+        $imageList = is_array($images) ? $images : $images->all();
+        foreach (array_slice($imageList, 0, 10) as $image) {
             // URL pública da imagem
             $imageUrl = url($image->path);
             $pictures[] = ['source' => $imageUrl];
