@@ -50,4 +50,13 @@ return [
         'cx' => env('GOOGLE_SEARCH_CX'), // Custom Search Engine ID
     ],
 
+    'mercado_livre' => [
+        'app_id' => env('MERCADO_LIVRE_APP_ID'),
+        'secret_key' => env('MERCADO_LIVRE_SECRET_KEY'),
+        'redirect_uri' => env('MERCADO_LIVRE_REDIRECT_URI'),
+        'environment' => env('MERCADO_LIVRE_ENVIRONMENT', 'production'),
+        'api_url' => 'https://api.mercadolibre.com',
+        'auth_url' => 'https://auth.mercadolivre.com.br/authorization',
+    ],
+
 ];

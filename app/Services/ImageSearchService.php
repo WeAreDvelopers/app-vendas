@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Cache;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Drivers\Gd\Driver;
 
@@ -34,6 +35,19 @@ class ImageSearchService
             return $this->fallbackImageSearch($query);
         }
 
+        // Cache de 24 horas para economizar quota da API
+        $cacheKey = 'image_search_' . md5($query . json_encode($options));
+
+        return Cache::remember($cacheKey, now()->addHours(24), function() use ($query, $options, $apiKey, $cx) {
+            return $this->performGoogleSearch($query, $options, $apiKey, $cx);
+        });
+    }
+
+    /**
+     * Executa a busca real no Google
+     */
+    private function performGoogleSearch(string $query, array $options, string $apiKey, string $cx): array
+    {
         try {
             $response = Http::timeout(15)->get(self::GOOGLE_CSE_ENDPOINT, [
                 'key' => $apiKey,
@@ -48,25 +62,62 @@ class ImageSearchService
             ]);
 
             if ($response->successful()) {
+                // Verifica se a resposta é JSON
+                $contentType = $response->header('Content-Type');
+                if (!str_contains($contentType, 'application/json')) {
+                    Log::error("Google API returned non-JSON response", [
+                        'content_type' => $contentType,
+                        'body_preview' => substr($response->body(), 0, 200)
+                    ]);
+                    return [];
+                }
+
                 $data = $response->json();
 
                 if (isset($data['items']) && count($data['items']) > 0) {
                     return $this->parseGoogleResults($data['items']);
                 }
 
+                // Verifica se há erro na resposta
+                if (isset($data['error'])) {
+                    Log::warning("Google API returned error", [
+                        'error' => $data['error']
+                    ]);
+                }
+
                 Log::info("No images found for query: {$query}");
                 return [];
             }
 
+            // Log detalhado do erro
+            $errorBody = $response->body();
+            $status = $response->status();
+
+            // Tratamento especial para quota excedida (429)
+            if ($status === 429) {
+                Log::warning("Google API quota exceeded - Limit reached for today");
+                throw new \Exception("Limite diário da API do Google atingido. A quota será resetada à meia-noite (horário do Pacífico). Tente novamente amanhã ou aguarde algumas horas.");
+            }
+
             Log::warning("Google Custom Search API error", [
-                'status' => $response->status(),
-                'body' => $response->body()
+                'status' => $status,
+                'content_type' => $response->header('Content-Type'),
+                'body_preview' => substr($errorBody, 0, 500),
+                'is_json' => str_contains($response->header('Content-Type'), 'json')
             ]);
 
             return [];
 
+        } catch (\Illuminate\Http\Client\RequestException $e) {
+            Log::error("HTTP Request error searching images", [
+                'message' => $e->getMessage(),
+                'response' => $e->response ? substr($e->response->body(), 0, 200) : null
+            ]);
+            return [];
         } catch (\Exception $e) {
-            Log::error("Error searching images: " . $e->getMessage());
+            Log::error("Error searching images: " . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
             return [];
         }
     }

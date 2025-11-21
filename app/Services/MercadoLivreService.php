@@ -9,6 +9,166 @@ use Illuminate\Support\Facades\DB;
 class MercadoLivreService
 {
     private const API_BASE_URL = 'https://api.mercadolibre.com';
+    private const AUTH_URL = 'https://auth.mercadolivre.com.br/authorization';
+    private const TOKEN_URL = 'https://api.mercadolibre.com/oauth/token';
+
+    /**
+     * Gera URL de autorização para OAuth
+     */
+    public function getAuthorizationUrl(): string
+    {
+        $params = [
+            'response_type' => 'code',
+            'client_id' => config('services.mercado_livre.app_id'),
+            'redirect_uri' => config('services.mercado_livre.redirect_uri'),
+        ];
+
+        return self::AUTH_URL . '?' . http_build_query($params);
+    }
+
+    /**
+     * Troca o código de autorização por tokens de acesso
+     */
+    public function getAccessToken(string $code): ?array
+    {
+        try {
+            $response = Http::asForm()->post(self::TOKEN_URL, [
+                'grant_type' => 'authorization_code',
+                'client_id' => config('services.mercado_livre.app_id'),
+                'client_secret' => config('services.mercado_livre.secret_key'),
+                'code' => $code,
+                'redirect_uri' => config('services.mercado_livre.redirect_uri'),
+            ]);
+
+            if ($response->successful()) {
+                return $response->json();
+            }
+
+            Log::error('Error getting ML access token', ['response' => $response->json()]);
+            return null;
+
+        } catch (\Exception $e) {
+            Log::error('Exception getting ML access token: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Renova o access token usando refresh token
+     */
+    public function refreshAccessToken(string $refreshToken): ?array
+    {
+        try {
+            $response = Http::asForm()->post(self::TOKEN_URL, [
+                'grant_type' => 'refresh_token',
+                'client_id' => config('services.mercado_livre.app_id'),
+                'client_secret' => config('services.mercado_livre.secret_key'),
+                'refresh_token' => $refreshToken,
+            ]);
+
+            if ($response->successful()) {
+                return $response->json();
+            }
+
+            Log::error('Error refreshing ML token', ['response' => $response->json()]);
+            return null;
+
+        } catch (\Exception $e) {
+            Log::error('Exception refreshing ML token: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Salva tokens de autenticação no banco
+     */
+    public function saveToken(?int $userId, array $tokenData): int
+    {
+        $expiresAt = now()->addSeconds($tokenData['expires_in']);
+
+        // Remove tokens antigos do mesmo usuário
+        if ($userId) {
+            DB::table('mercado_livre_tokens')
+                ->where('user_id', $userId)
+                ->delete();
+        }
+
+        return DB::table('mercado_livre_tokens')->insertGetId([
+            'user_id' => $userId,
+            'access_token' => $tokenData['access_token'],
+            'refresh_token' => $tokenData['refresh_token'],
+            'expires_in' => $tokenData['expires_in'],
+            'expires_at' => $expiresAt,
+            'ml_user_id' => $tokenData['user_id'] ?? null,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    /**
+     * Busca token ativo (renova automaticamente se expirado)
+     */
+    public function getActiveToken(?int $userId = null): ?object
+    {
+        $query = DB::table('mercado_livre_tokens')
+            ->where('is_active', true);
+
+        if ($userId) {
+            $query->where('user_id', $userId);
+        }
+
+        $token = $query->orderBy('created_at', 'desc')->first();
+
+        if (!$token) {
+            return null;
+        }
+
+        // Verifica se o token expirou ou está próximo de expirar (5 min)
+        if (now()->addMinutes(5)->greaterThan($token->expires_at)) {
+            $newTokenData = $this->refreshAccessToken($token->refresh_token);
+
+            if ($newTokenData) {
+                // Atualiza token no banco
+                DB::table('mercado_livre_tokens')
+                    ->where('id', $token->id)
+                    ->update([
+                        'access_token' => $newTokenData['access_token'],
+                        'refresh_token' => $newTokenData['refresh_token'],
+                        'expires_in' => $newTokenData['expires_in'],
+                        'expires_at' => now()->addSeconds($newTokenData['expires_in']),
+                        'last_refresh_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+
+                // Recarrega token atualizado
+                $token = DB::table('mercado_livre_tokens')->find($token->id);
+            }
+        }
+
+        return $token;
+    }
+
+    /**
+     * Busca informações do usuário ML autenticado
+     */
+    public function getUserInfo(string $accessToken): ?array
+    {
+        try {
+            $response = Http::withToken($accessToken)
+                ->get(self::API_BASE_URL . '/users/me');
+
+            if ($response->successful()) {
+                return $response->json();
+            }
+
+            return null;
+
+        } catch (\Exception $e) {
+            Log::error('Error getting ML user info: ' . $e->getMessage());
+            return null;
+        }
+    }
 
     /**
      * Valida e prepara dados do produto para publicação no ML
@@ -369,6 +529,102 @@ class MercadoLivreService
         } catch (\Exception $e) {
             Log::error("Error fetching category attributes: " . $e->getMessage());
             return [];
+        }
+    }
+
+    /**
+     * Publica anúncio no Mercado Livre
+     */
+    public function publishListing(string $accessToken, array $payload): ?array
+    {
+        try {
+            $response = Http::withToken($accessToken)
+                ->timeout(30)
+                ->post(self::API_BASE_URL . '/items', $payload);
+
+            if ($response->successful()) {
+                return $response->json();
+            }
+
+            // Retorna erro da API
+            $error = $response->json();
+            Log::error('Error publishing to ML', [
+                'status' => $response->status(),
+                'error' => $error
+            ]);
+
+            return [
+                'error' => true,
+                'message' => $error['message'] ?? 'Erro ao publicar anúncio',
+                'details' => $error
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Exception publishing to ML: ' . $e->getMessage());
+            return [
+                'error' => true,
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Atualiza anúncio existente no Mercado Livre
+     */
+    public function updateListing(string $accessToken, string $mlId, array $payload): ?array
+    {
+        try {
+            $response = Http::withToken($accessToken)
+                ->timeout(30)
+                ->put(self::API_BASE_URL . "/items/{$mlId}", $payload);
+
+            if ($response->successful()) {
+                return $response->json();
+            }
+
+            $error = $response->json();
+            Log::error('Error updating ML listing', [
+                'ml_id' => $mlId,
+                'status' => $response->status(),
+                'error' => $error
+            ]);
+
+            return [
+                'error' => true,
+                'message' => $error['message'] ?? 'Erro ao atualizar anúncio',
+                'details' => $error
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Exception updating ML listing: ' . $e->getMessage());
+            return [
+                'error' => true,
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Pausa/ativa anúncio no Mercado Livre
+     */
+    public function toggleListingStatus(string $accessToken, string $mlId, string $status): ?array
+    {
+        try {
+            $response = Http::withToken($accessToken)
+                ->timeout(30)
+                ->put(self::API_BASE_URL . "/items/{$mlId}", [
+                    'status' => $status // paused, active, closed
+                ]);
+
+            if ($response->successful()) {
+                return $response->json();
+            }
+
+            return null;
+
+        } catch (\Exception $e) {
+            Log::error('Exception toggling ML listing status: ' . $e->getMessage());
+            return null;
         }
     }
 }

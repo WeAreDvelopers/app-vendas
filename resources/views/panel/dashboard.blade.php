@@ -4,6 +4,24 @@
 @section('page-subtitle','Visão geral do pipeline')
 
 @section('content')
+<!-- Card de Status Mercado Livre -->
+<div class="notion-card mb-3" id="ml-status-card">
+  <div class="d-flex align-items-center justify-content-between">
+    <div>
+      <div class="fw-semibold mb-1">Mercado Livre</div>
+      <div class="text-muted small" id="ml-status-text">Verificando conexão...</div>
+    </div>
+    <div>
+      <a href="{{ route('panel.mercado-livre.connect') }}" class="btn btn-primary" id="ml-connect-btn" style="display:none;">
+        Conectar Conta
+      </a>
+      <a href="{{ route('panel.mercado-livre.disconnect') }}" class="btn btn-outline-danger" id="ml-disconnect-btn" style="display:none;">
+        Desconectar
+      </a>
+    </div>
+  </div>
+</div>
+
 <div class="row g-3">
   <div class="col-md-3">
     <div class="notion-card">
@@ -30,6 +48,31 @@
     </div>
   </div>
 </div>
+
+<script>
+// Verifica status da conexão com Mercado Livre
+fetch('{{ route("panel.mercado-livre.status") }}')
+  .then(r => r.json())
+  .then(data => {
+    const statusText = document.getElementById('ml-status-text');
+    const connectBtn = document.getElementById('ml-connect-btn');
+    const disconnectBtn = document.getElementById('ml-disconnect-btn');
+    const card = document.getElementById('ml-status-card');
+
+    if (data.connected) {
+      statusText.innerHTML = `Conectado como <strong>${data.ml_nickname || 'Usuário'}</strong>`;
+      card.classList.add('border-success');
+      disconnectBtn.style.display = 'inline-block';
+    } else {
+      statusText.textContent = 'Não conectado';
+      card.classList.add('border-warning');
+      connectBtn.style.display = 'inline-block';
+    }
+  })
+  .catch(() => {
+    document.getElementById('ml-status-text').textContent = 'Erro ao verificar status';
+  });
+</script>
 
 <div class="notion-card mt-4">
   <div class="d-flex align-items-center justify-content-between mb-2">

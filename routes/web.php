@@ -19,6 +19,10 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 Route::get('/', fn() => redirect()->route('panel.dashboard'))->name('home');
 
+// Mercado Livre OAuth Callback (sem autenticação para receber callback)
+Route::get('/mercado-livre/callback', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'callback'])->name('mercado-livre.callback');
+Route::post('/mercado-livre/notifications', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'notifications'])->name('mercado-livre.notifications');
+
 Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
@@ -52,7 +56,12 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::post('/products/{id}/reference-image', [ProductUIController::class, 'uploadReferenceImage'])->name('products.reference-image.upload');
     Route::delete('/products/{id}/reference-image', [ProductUIController::class, 'deleteReferenceImage'])->name('products.reference-image.delete');
 
-    // Mercado Livre
+    // Mercado Livre - Autenticação
+    Route::get('/mercado-livre/connect', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'connect'])->name('mercado-livre.connect');
+    Route::get('/mercado-livre/disconnect', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'disconnect'])->name('mercado-livre.disconnect');
+    Route::get('/mercado-livre/status', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'status'])->name('mercado-livre.status');
+
+    // Mercado Livre - Produtos
     Route::get('/mercado-livre/{productId}/prepare', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'prepare'])->name('mercado-livre.prepare');
     Route::post('/mercado-livre/{productId}/draft', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'saveDraft'])->name('mercado-livre.save-draft');
     Route::post('/mercado-livre/{productId}/publish', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'publish'])->name('mercado-livre.publish');

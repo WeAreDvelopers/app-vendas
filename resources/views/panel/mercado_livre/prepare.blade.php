@@ -345,7 +345,7 @@
 
       <div class="mb-2">
         <small class="text-muted">Preço:</small>
-        <div class="fw-bold text-success fs-4">R$ {{ number_format($product->price ?? 0, 2, ',', '.') }}</div>
+        <div class="fw-bold text-success fs-4" id="previewPrice">R$ {{ number_format($listing->price ?? $product->price ?? 0, 2, ',', '.') }}</div>
       </div>
 
       @if($product->brand)
@@ -373,6 +373,16 @@ document.getElementById('mlTitle').addEventListener('input', function() {
   const count = this.value.length;
   document.getElementById('titleCount').textContent = count;
   document.getElementById('previewTitle').textContent = this.value;
+});
+
+// Atualiza preview do preço
+document.querySelector('input[name="price"]').addEventListener('input', function() {
+  const price = parseFloat(this.value) || 0;
+  const formatted = price.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  });
+  document.getElementById('previewPrice').textContent = formatted;
 });
 
 // Função para publicar

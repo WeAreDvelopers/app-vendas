@@ -17,6 +17,109 @@ class MercadoLivreController extends Controller
     }
 
     /**
+     * Redireciona para autorização do Mercado Livre
+     */
+    public function connect()
+    {
+        $authUrl = $this->mlService->getAuthorizationUrl();
+        return redirect($authUrl);
+    }
+
+    /**
+     * Callback OAuth - recebe código de autorização
+     */
+    public function callback(Request $request)
+    {
+        $code = $request->get('code');
+        $error = $request->get('error');
+
+        if ($error) {
+            return redirect()->route('panel.dashboard')
+                ->with('error', 'Autorização negada pelo Mercado Livre.');
+        }
+
+        if (!$code) {
+            return redirect()->route('panel.dashboard')
+                ->with('error', 'Código de autorização não recebido.');
+        }
+
+        // Troca código por tokens
+        $tokenData = $this->mlService->getAccessToken($code);
+
+        if (!$tokenData) {
+            return redirect()->route('panel.dashboard')
+                ->with('error', 'Erro ao obter token de acesso do Mercado Livre.');
+        }
+
+        // Salva token no banco
+        $userId = auth()->id();
+        $this->mlService->saveToken($userId, $tokenData);
+
+        // Busca informações do usuário ML
+        $userInfo = $this->mlService->getUserInfo($tokenData['access_token']);
+
+        if ($userInfo) {
+            // Atualiza nickname do usuário ML
+            DB::table('mercado_livre_tokens')
+                ->where('user_id', $userId)
+                ->update([
+                    'ml_nickname' => $userInfo['nickname'] ?? null,
+                    'updated_at' => now()
+                ]);
+        }
+
+        return redirect()->route('panel.dashboard')
+            ->with('ok', 'Conectado ao Mercado Livre com sucesso!');
+    }
+
+    /**
+     * Desconecta da conta Mercado Livre
+     */
+    public function disconnect()
+    {
+        DB::table('mercado_livre_tokens')
+            ->where('user_id', auth()->id())
+            ->update([
+                'is_active' => false,
+                'updated_at' => now()
+            ]);
+
+        return redirect()->route('panel.dashboard')
+            ->with('ok', 'Desconectado do Mercado Livre.');
+    }
+
+    /**
+     * Verifica status da conexão
+     */
+    public function status()
+    {
+        $token = $this->mlService->getActiveToken(auth()->id());
+
+        if ($token) {
+            return response()->json([
+                'connected' => true,
+                'ml_nickname' => $token->ml_nickname,
+                'expires_at' => $token->expires_at,
+            ]);
+        }
+
+        return response()->json(['connected' => false]);
+    }
+
+    /**
+     * Recebe notificações do Mercado Livre
+     */
+    public function notifications(Request $request)
+    {
+        // Log da notificação para debug
+        \Log::info('ML Notification received', $request->all());
+
+        // TODO: Processar notificações (vendas, perguntas, etc)
+
+        return response()->json(['status' => 'ok']);
+    }
+
+    /**
      * Mostra tela de análise e preparação do anúncio
      */
     public function prepare(int $productId)
@@ -35,8 +138,18 @@ class MercadoLivreController extends Controller
             ->where('product_id', $productId)
             ->first();
 
-        // Valida qualidade do produto
-        $validation = $this->mlService->validateProduct($product, $images);
+        // Se tiver listing, usa os dados do listing para validação
+        // Isso garante que campos preenchidos no form sejam considerados
+        $productForValidation = clone $product;
+        if ($listing) {
+            // Sobrescreve com dados do listing quando disponíveis
+            $productForValidation->price = $listing->price ?? $product->price;
+            $productForValidation->name = $listing->title ?? $product->name;
+            $productForValidation->stock = $listing->available_quantity ?? $product->stock;
+        }
+
+        // Valida qualidade do produto (usando dados do listing se existir)
+        $validation = $this->mlService->validateProduct($productForValidation, $images);
 
         // Prediz categoria baseada no título
         $suggestedCategories = $this->mlService->predictCategory($product->name);
@@ -99,7 +212,7 @@ class MercadoLivreController extends Controller
     }
 
     /**
-     * Publica o anúncio no Mercado Livre (futuro)
+     * Publica o anúncio no Mercado Livre
      */
     public function publish(int $productId)
     {
@@ -118,24 +231,50 @@ class MercadoLivreController extends Controller
             ->orderBy('sort')
             ->get();
 
+        // Usa dados do listing para validação (mesma lógica do prepare)
+        $productForValidation = clone $product;
+        $productForValidation->price = $listing->price ?? $product->price;
+        $productForValidation->name = $listing->title ?? $product->name;
+        $productForValidation->stock = $listing->available_quantity ?? $product->stock;
+
         // Valida antes de publicar
-        $validation = $this->mlService->validateProduct($product, $images);
+        $validation = $this->mlService->validateProduct($productForValidation, $images);
 
         if (!$validation['can_publish']) {
             return back()->with('error', 'Não é possível publicar. Corrija os erros: ' . implode(', ', $validation['errors']));
         }
 
-        // TODO: Integração real com a API do ML
-        // Por enquanto, apenas atualiza o status para pending_review
+        // Verifica se está conectado ao ML
+        $token = $this->mlService->getActiveToken(auth()->id());
 
+        if (!$token) {
+            return back()->with('error', 'Você precisa conectar sua conta do Mercado Livre primeiro.');
+        }
+
+        // Prepara payload
+        $listingData = (array) $listing;
+        $payload = $this->mlService->prepareListingPayload($product, $listingData, $images);
+
+        // Publica no Mercado Livre
+        $result = $this->mlService->publishListing($token->access_token, $payload);
+
+        if (!$result || isset($result['error'])) {
+            $errorMsg = $result['message'] ?? 'Erro desconhecido ao publicar';
+            return back()->with('error', 'Erro ao publicar no ML: ' . $errorMsg);
+        }
+
+        // Atualiza listing com dados do ML
         DB::table('mercado_livre_listings')
             ->where('id', $listing->id)
             ->update([
-                'status' => 'pending_review',
+                'ml_id' => $result['id'],
+                'status' => $result['status'],
+                'published_at' => now(),
+                'last_sync_at' => now(),
                 'updated_at' => now()
             ]);
 
-        return back()->with('ok', 'Anúncio enviado para revisão! A integração com a API do ML será implementada em breve.');
+        return back()->with('ok', 'Anúncio publicado no Mercado Livre com sucesso! ID: ' . $result['id']);
     }
 
     /**
