@@ -260,6 +260,20 @@ class MercadoLivreController extends Controller
 
         if (!$result || isset($result['error'])) {
             $errorMsg = $result['message'] ?? 'Erro desconhecido ao publicar';
+
+            // Log detalhado do erro
+            \Log::error('Erro ao publicar no ML', [
+                'product_id' => $productId,
+                'error' => $result,
+                'payload' => $payload
+            ]);
+
+            // Mostra detalhes do erro se houver
+            if (isset($result['details']['cause'])) {
+                $causes = collect($result['details']['cause'])->pluck('message')->implode('; ');
+                return back()->with('error', 'Erro ao publicar no ML: ' . $errorMsg . ' - ' . $causes);
+            }
+
             return back()->with('error', 'Erro ao publicar no ML: ' . $errorMsg);
         }
 

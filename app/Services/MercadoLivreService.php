@@ -325,6 +325,16 @@ class MercadoLivreService
             ];
         }
 
+        // Atributo MODEL (obrigatório em muitas categorias)
+        // Usa o nome do produto ou SKU como modelo se não tiver um campo específico
+        $model = $product->model ?? $product->sku ?? $product->name;
+        if (!empty($model)) {
+            $attributes[] = [
+                'id' => 'MODEL',
+                'value_name' => substr($model, 0, 255) // Limite de 255 caracteres
+            ];
+        }
+
         // Atributo GTIN (EAN)
         if (!empty($product->ean)) {
             $attributes[] = [
