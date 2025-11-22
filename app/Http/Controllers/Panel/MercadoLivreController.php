@@ -23,7 +23,7 @@ class MercadoLivreController extends Controller
     {
         $token = $this->mlService->getActiveToken(auth()->id());
 
-        return view('panel.mercado-livre.index', compact('token'));
+        return view('panel.mercado_livre.index', compact('token'));
     }
 
     /**
@@ -122,7 +122,7 @@ class MercadoLivreController extends Controller
             $categoryAttributes = $this->mlService->getCategoryAttributes($listing->category_id);
         }
 
-        return view('panel.mercado-livre.prepare', compact(
+        return view('panel.mercado_livre.prepare', compact(
             'product',
             'listing',
             'images',
