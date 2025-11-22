@@ -233,10 +233,10 @@ class MercadoLivreController extends Controller
         // Salva rascunho
         $listingId = $this->mlService->saveDraft($productId, $validated);
 
-        // Se o usuário clicou em "Publicar Agora", redireciona para a rota de publicação
+        // Se o usuário clicou em "Publicar Agora", chama publish() diretamente
         if ($request->boolean('publish_now')) {
-            return redirect()
-                ->route('panel.mercado-livre.publish', $productId);
+            // Chama o método publish diretamente ao invés de redirecionar
+            return $this->publish($request, $productId);
         }
 
         return back()->with('ok', 'Rascunho salvo com sucesso! Score de qualidade: ' . $validation['percentage'] . '%');
