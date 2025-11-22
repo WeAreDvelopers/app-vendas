@@ -122,6 +122,35 @@ class MercadoLivreController extends Controller
             $categoryAttributes = $this->mlService->getCategoryAttributes($listing->category_id);
         }
 
+        // Decodifica campos JSON do listing para evitar erros no Blade
+        if ($listing) {
+            // Decodifica validation_errors
+            if (!empty($listing->validation_errors) && is_string($listing->validation_errors)) {
+                $listing->validation_errors = json_decode($listing->validation_errors, true) ?? [];
+            } else {
+                $listing->validation_errors = [];
+            }
+
+            // Decodifica missing_fields
+            if (!empty($listing->missing_fields) && is_string($listing->missing_fields)) {
+                $listing->missing_fields = json_decode($listing->missing_fields, true) ?? [];
+            } else {
+                $listing->missing_fields = [];
+            }
+
+            // Decodifica attributes
+            if (!empty($listing->attributes) && is_string($listing->attributes)) {
+                $listing->attributes = json_decode($listing->attributes, true);
+                // Double decode se necessário
+                if (!is_array($listing->attributes) && is_string($listing->attributes)) {
+                    $listing->attributes = json_decode($listing->attributes, true) ?? [];
+                }
+            }
+            if (!is_array($listing->attributes)) {
+                $listing->attributes = [];
+            }
+        }
+
         return view('panel.mercado_livre.prepare', compact(
             'product',
             'listing',
@@ -216,84 +245,103 @@ class MercadoLivreController extends Controller
     /**
      * Publica o anúncio no Mercado Livre
      */
-    public function publish(Request $request, int $productId)
-    {
-        $product = DB::table('products')->find($productId);
-        abort_unless($product, 404);
+   public function publish(Request $request, int $productId)
+{
+    $product = DB::table('products')->find($productId);
+    abort_unless($product, 404);
 
-        $listing = DB::table('mercado_livre_listings')
-            ->where('product_id', $productId)
-            ->first();
+    $listing = DB::table('mercado_livre_listings')
+        ->where('product_id', $productId)
+        ->first();
 
-        abort_unless($listing, 404, 'Rascunho não encontrado. Prepare o anúncio primeiro.');
+    abort_unless($listing, 404, 'Rascunho não encontrado. Prepare o anúncio primeiro.');
 
-        // Busca imagens
-        $images = DB::table('product_images')
-            ->where('product_id', $productId)
-            ->orderBy('sort')
-            ->get();
+    // Busca imagens
+    $images = DB::table('product_images')
+        ->where('product_id', $productId)
+        ->orderBy('sort')
+        ->get();
 
-        // Usa dados do listing para validação (mesma lógica do prepare)
-        $productForValidation              = clone $product;
-        $productForValidation->price       = $listing->price ?? $product->price;
-        $productForValidation->name        = $listing->title ?? $product->name;
-        $productForValidation->stock       = $listing->available_quantity ?? $product->stock;
-        $productForValidation->description = $listing->plain_text_description ?? $product->description;
+    // Monta objeto para validação com dados do listing
+    $productForValidation              = clone $product;
+    $productForValidation->price       = $listing->price ?? $product->price;
+    $productForValidation->name        = $listing->title ?? $product->name;
+    $productForValidation->stock       = $listing->available_quantity ?? $product->stock;
+    $productForValidation->description = $listing->plain_text_description ?? $product->description;
 
-        // Valida antes de publicar
-        $validation = $this->mlService->validateProduct($productForValidation, $images);
+    // Valida antes de publicar
+    $validation = $this->mlService->validateProduct($productForValidation, $images);
 
-        if (!$validation['can_publish']) {
-            return back()->with(
-                'error',
-                'Não é possível publicar o anúncio. Corrija os erros: ' . implode(', ', $validation['errors'])
-            );
-        }
+    if (!$validation['can_publish']) {
+        $msg = 'Não é possível publicar o anúncio. Corrija os erros: ' . implode(', ', $validation['errors']);
+        return back()->with('error', $msg);
+    }
 
-        // Verifica se está conectado ao ML
-        $token = $this->mlService->getActiveToken(auth()->id());
+    // Garante token ativo do ML
+    $token = $this->mlService->getActiveToken(auth()->id());
+    if (!$token) {
+        return redirect()
+            ->route('panel.mercado-livre.index')
+            ->with('error', 'Você precisa conectar sua conta do Mercado Livre antes de publicar o anúncio.');
+    }
 
-        if (!$token) {
-            return redirect()->route('panel.mercado-livre.index')
-                ->with('error', 'Você precisa conectar sua conta do Mercado Livre antes de publicar o anúncio.');
-        }
+    // Prepara payload com base no rascunho
+    $listingData = (array) $listing;
 
-        // Monta payload final usando o listing (rascunho) + imagens
-        $listingData = (array) $listing;
-        $payload     = $this->mlService->prepareListingPayload($product, $listingData, $images);
+    // (Opcional, mas seguro: se vier string aqui, o service já trata, mas não custa proteger)
+    if (isset($listingData['attributes']) && is_string($listingData['attributes'])) {
+        // não precisa fazer nada aqui, o service já faz json_decode com segurança
+    }
 
-        try {
-            $result = $this->mlService->publishListing($payload);
+    $payload = $this->mlService->prepareListingPayload($product, $listingData, $images);
 
-            if (!empty($result['error'])) {
-                $errorMsg = $result['error'];
+    // Verifica atributos obrigatórios da categoria via service
+    $categoryAttrs   = $this->mlService->getCategoryAttributes($listing->category_id);
+    $missingRequired = [];
 
-                if (!empty($result['details']['cause'])) {
-                    $causes = collect($result['details']['cause'])->pluck('message')->implode('; ');
-                    return back()->with('error', 'Erro ao publicar no ML: ' . $errorMsg . ' - ' . $causes);
-                }
+    if (!empty($categoryAttrs['required']) && is_array($categoryAttrs['required'])) {
+        $currentAttrIds = array_column($payload['attributes'], 'id');
 
-                return back()->with('error', 'Erro ao publicar no ML: ' . $errorMsg);
+        foreach ($categoryAttrs['required'] as $requiredAttr) {
+            if (!in_array($requiredAttr['id'], $currentAttrIds)) {
+                $missingRequired[] = $requiredAttr['name'] . ' (' . $requiredAttr['id'] . ')';
             }
-
-            // Atualiza listing com dados do ML
-            DB::table('mercado_livre_listings')
-                ->where('id', $listing->id)
-                ->update([
-                    'ml_id'        => $result['id'],
-                    'status'       => $result['status'],
-                    'published_at' => now(),
-                    'last_sync_at' => now(),
-                    'updated_at'   => now(),
-                ]);
-
-            return back()->with('ok', 'Anúncio publicado no Mercado Livre com sucesso! ID: ' . $result['id']);
-        } catch (\Exception $e) {
-            report($e);
-
-            return back()->with('error', 'Erro inesperado ao publicar no Mercado Livre: ' . $e->getMessage());
         }
     }
+
+    if (!empty($missingRequired)) {
+        return back()->with(
+            'error',
+            'Faltam atributos obrigatórios: ' . implode(', ', $missingRequired) . '. Por favor, preencha todos os campos obrigatórios.'
+        );
+    }
+
+    // Publica no Mercado Livre
+    $result = $this->mlService->publishListing($token->access_token, $payload);
+
+    if (!$result || isset($result['error'])) {
+        $errorMsg = $result['message'] ?? 'Erro desconhecido ao publicar';
+
+        return back()->with(
+            'error',
+            'Erro ao publicar no Mercado Livre: ' . $errorMsg
+        );
+    }
+
+    // Atualiza dados do anúncio na tabela de listings
+    DB::table('mercado_livre_listings')
+        ->where('id', $listing->id)
+        ->update([
+            'ml_id'        => $result['id'] ?? $listing->ml_id,
+            'status'       => $result['status'] ?? $listing->status,
+            'published_at' => now(),
+            'last_sync_at' => now(),
+            'updated_at'   => now(),
+        ]);
+
+    return back()->with('ok', 'Anúncio publicado no Mercado Livre com sucesso! ID: ' . $result['id']);
+}
+
 
     /**
      * Busca atributos da categoria selecionada (AJAX)

@@ -231,8 +231,8 @@
         Atributos da categoria
       </label>
       <div id="categoryAttributesContainer">
-        @if(!empty($categoryAttributes) && (isset($categoryAttributes['required']) || isset($categoryAttributes['optional'])))
-          @foreach(array_merge($categoryAttributes['required'] ?? [], $categoryAttributes['optional'] ?? []) as $attr)
+        @if(!empty($categoryAttributes))
+          @foreach($categoryAttributes as $attr)
             <div class="mb-2">
               <label class="form-label">
                 {{ $attr['name'] }}
@@ -242,8 +242,7 @@
               </label>
 
               @php
-                // Os atributos já vêm decodificados do controller
-                $savedAttributes = is_array($listing->attributes ?? null) ? $listing->attributes : [];
+                $savedAttributes = json_decode($listing->attributes ?? '[]', true);
                 $saved = collect($savedAttributes)->firstWhere('id', $attr['id']);
               @endphp
 
@@ -372,25 +371,18 @@ function renderCategoryAttributes() {
   const container = document.getElementById('categoryAttributesContainer');
   container.innerHTML = '';
 
-  // Mescla atributos required e optional
-  const allAttributes = [
-    ...(currentCategoryAttributes.required || []),
-    ...(currentCategoryAttributes.optional || [])
-  ];
-
-  if (allAttributes.length === 0) {
+  if (!Array.isArray(currentCategoryAttributes) || currentCategoryAttributes.length === 0) {
     container.innerHTML = '<p class="text-muted">Nenhum atributo disponível para esta categoria.</p>';
     return;
   }
 
   @php
-    // Os atributos já vêm decodificados do controller
-    $savedAttributes = is_array($listing->attributes ?? null) ? $listing->attributes : [];
+    $savedAttributes = json_decode($listing->attributes ?? '[]', true);
   @endphp
 
-  const savedAttributes = @json($savedAttributes);
+  const savedAttributes = @json($savedAttributes ?? []);
 
-  allAttributes.forEach(attr => {
+  currentCategoryAttributes.forEach(attr => {
     const wrapper = document.createElement('div');
     wrapper.classList.add('mb-2');
 
