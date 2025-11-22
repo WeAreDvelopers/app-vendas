@@ -283,7 +283,7 @@
         @forelse($images as $img)
           <div class="col-md-3 mb-3">
             <div class="card">
-              <img src="{{ asset('storage/product_images/' . $img->path) }}"
+              <img src="{{ asset( $img->path) }}"
                    class="card-img-top"
                    alt="Imagem do produto">
               <div class="card-body p-2">
