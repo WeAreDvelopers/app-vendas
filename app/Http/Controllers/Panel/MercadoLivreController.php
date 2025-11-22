@@ -321,11 +321,11 @@ class MercadoLivreController extends Controller
                 }
             }
         }
-
+dd($payload);
         if (!empty($missingRequired)) {
             return back()->with('error', 'Faltam atributos obrigatórios: ' . implode(', ', $missingRequired) . '. Por favor, preencha todos os campos obrigatórios.');
         }
-dd($payload);
+
         // Publica no Mercado Livre
         $result = $this->mlService->publishListing($token->access_token, $payload);
 
