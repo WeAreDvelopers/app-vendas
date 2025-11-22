@@ -217,10 +217,19 @@ class MercadoLivreController extends Controller
         if (!empty($validated['ml_attr'])) {
             foreach ($validated['ml_attr'] as $attrId => $attrValue) {
                 if (!empty($attrValue)) {
-                    $customAttributes[] = [
-                        'id' => $attrId,
-                        'value_name' => $attrValue
-                    ];
+                    $attribute = ['id' => $attrId];
+
+                    // Se o valor contém "|", separa em ID e nome
+                    if (strpos($attrValue, '|') !== false) {
+                        [$valueId, $valueName] = explode('|', $attrValue, 2);
+                        $attribute['value_id'] = $valueId;
+                        $attribute['value_name'] = $valueName;
+                    } else {
+                        // Se não tem "|", usa como value_name apenas
+                        $attribute['value_name'] = $attrValue;
+                    }
+
+                    $customAttributes[] = $attribute;
                 }
             }
         }

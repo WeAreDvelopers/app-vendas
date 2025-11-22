@@ -570,11 +570,15 @@ function createAttributeField(attr, required, savedValue) {
 
     attr.values.forEach(value => {
       const option = document.createElement('option');
-      // IMPORTANTE: Usa value.name como valor, não o ID
-      // O Mercado Livre espera o nome do valor, não o ID
-      option.value = value.name;
+      // Envia ID|Nome para poder separar depois
+      // Formato: "53803221|Toalha de banho"
+      option.value = value.id + '|' + value.name;
       option.textContent = value.name;
-      if (savedValue && savedValue === value.name) {
+      option.dataset.valueId = value.id;
+      option.dataset.valueName = value.name;
+
+      // Verifica se está selecionado (por ID ou nome)
+      if (savedValue && (savedValue === value.name || savedValue.startsWith(value.id + '|'))) {
         option.selected = true;
       }
       input.appendChild(option);
