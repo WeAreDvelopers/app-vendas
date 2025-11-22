@@ -414,10 +414,16 @@ class MercadoLivreService
                 ? json_decode($listingData['attributes'], true)
                 : $listingData['attributes'];
 
+            // Se ainda for string (JSON duplo), decodifica novamente
+            if (!is_array($customAttributes) && is_string($customAttributes)) {
+                $customAttributes = json_decode($customAttributes, true);
+            }
+
             if (is_array($customAttributes)) {
                 // Mescla atributos customizados, evitando duplicatas
                 foreach ($customAttributes as $attr) {
-                    if (isset($attr['id']) && isset($attr['value_name'])) {
+                    // Aceita se tiver ID do atributo e pelo menos value_name OU value_id
+                    if (isset($attr['id']) && (isset($attr['value_name']) || isset($attr['value_id']))) {
                         // Remove atributo existente com mesmo ID se houver
                         $attributes = array_filter($attributes, fn($a) => $a['id'] !== $attr['id']);
                         $attributes[] = $attr;
