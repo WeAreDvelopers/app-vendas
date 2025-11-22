@@ -299,6 +299,24 @@ class MercadoLivreController extends Controller
         $listingData = (array) $listing;
         $payload = $this->mlService->prepareListingPayload($product, $listingData, $images);
 
+        // Verifica atributos obrigatórios da categoria
+        $categoryAttrs = $this->mlService->getCategoryAttributes($listing->category_id);
+        $missingRequired = [];
+
+        if (!empty($categoryAttrs['required'])) {
+            $currentAttrIds = array_column($payload['attributes'], 'id');
+
+            foreach ($categoryAttrs['required'] as $requiredAttr) {
+                if (!in_array($requiredAttr['id'], $currentAttrIds)) {
+                    $missingRequired[] = $requiredAttr['name'] . ' (' . $requiredAttr['id'] . ')';
+                }
+            }
+        }
+
+        if (!empty($missingRequired)) {
+            return back()->with('error', 'Faltam atributos obrigatórios: ' . implode(', ', $missingRequired) . '. Por favor, preencha todos os campos obrigatórios.');
+        }
+
         // Publica no Mercado Livre
         $result = $this->mlService->publishListing($token->access_token, $payload);
 

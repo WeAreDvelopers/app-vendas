@@ -570,9 +570,11 @@ function createAttributeField(attr, required, savedValue) {
 
     attr.values.forEach(value => {
       const option = document.createElement('option');
-      option.value = value.id || value.name;
+      // IMPORTANTE: Usa value.name como valor, não o ID
+      // O Mercado Livre espera o nome do valor, não o ID
+      option.value = value.name;
       option.textContent = value.name;
-      if (savedValue && (savedValue === value.name || savedValue === value.id)) {
+      if (savedValue && savedValue === value.name) {
         option.selected = true;
       }
       input.appendChild(option);
