@@ -30,6 +30,32 @@
                   <i class="bi bi-magic"></i> Com descrição IA
                 </small>
               @endif
+              @if($p->integrations && $p->integrations->count() > 0)
+                <div class="mt-1">
+                  @foreach($p->integrations as $integration)
+                    @php
+                      $info = (new \App\Models\ProductIntegration)->getPlatformInfo();
+                      $platformData = $info;
+                      // Buscar info específica da plataforma atual
+                      foreach ([
+                        'mercado_livre' => ['name' => 'Mercado Livre', 'color' => 'warning', 'icon' => '🛒'],
+                        'shopee' => ['name' => 'Shopee', 'color' => 'danger', 'icon' => '🛍️'],
+                        'amazon' => ['name' => 'Amazon', 'color' => 'dark', 'icon' => '📦'],
+                        'magalu' => ['name' => 'Magazine Luiza', 'color' => 'primary', 'icon' => '🏪'],
+                        'americanas' => ['name' => 'Americanas', 'color' => 'danger', 'icon' => '🏬'],
+                      ] as $key => $val) {
+                        if ($integration->platform === $key) {
+                          $platformData = $val;
+                          break;
+                        }
+                      }
+                    @endphp
+                    <span class="chip chip-{{ $platformData['color'] }}" style="font-size: 0.75rem;">
+                      {{ $platformData['icon'] }} {{ $platformData['name'] }}
+                    </span>
+                  @endforeach
+                </div>
+              @endif
             </td>
             <td>{{ $p->price ? 'R$ ' . number_format($p->price, 2, ',', '.') : '-' }}</td>
             <td>{{ $p->stock }}</td>

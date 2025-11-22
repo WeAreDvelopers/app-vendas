@@ -12,7 +12,10 @@ use App\Services\AIDescriptionService;
 class ProductUIController extends Controller {
     public function index(Request $r) {
         $search = trim($r->get('q',''));
-        $query = DB::table('products');
+
+        // Usa Eloquent ao invés de Query Builder para ter acesso aos relationships
+        $query = \App\Models\Product::query();
+
         if ($search) {
             $query->where(function($q) use ($search){
                 $q->where('name','like',"%$search%")
@@ -20,7 +23,15 @@ class ProductUIController extends Controller {
                   ->orWhere('ean','like',"%$search%");
             });
         }
-        $products = $query->orderByDesc('id')->paginate(24)->withQueryString();
+
+        // Carrega as integrações ativas junto com os produtos
+        $products = $query->with(['integrations' => function($q) {
+            $q->where('status', 'active');
+        }])
+        ->orderByDesc('id')
+        ->paginate(24)
+        ->withQueryString();
+
         return view('panel.products.index', compact('products','search'));
     }
 
