@@ -34,24 +34,10 @@
                 <div class="mt-1">
                   @foreach($p->integrations as $integration)
                     @php
-                      $info = (new \App\Models\ProductIntegration)->getPlatformInfo();
-                      $platformData = $info;
-                      // Buscar info específica da plataforma atual
-                      foreach ([
-                        'mercado_livre' => ['name' => 'Mercado Livre', 'color' => 'warning', 'icon' => '🛒'],
-                        'shopee' => ['name' => 'Shopee', 'color' => 'danger', 'icon' => '🛍️'],
-                        'amazon' => ['name' => 'Amazon', 'color' => 'dark', 'icon' => '📦'],
-                        'magalu' => ['name' => 'Magazine Luiza', 'color' => 'primary', 'icon' => '🏪'],
-                        'americanas' => ['name' => 'Americanas', 'color' => 'danger', 'icon' => '🏬'],
-                      ] as $key => $val) {
-                        if ($integration->platform === $key) {
-                          $platformData = $val;
-                          break;
-                        }
-                      }
+                      $platformInfo = $integration->getPlatformInfo();
                     @endphp
-                    <span class="chip chip-{{ $platformData['color'] }}" style="font-size: 0.75rem;">
-                      {{ $platformData['icon'] }} {{ $platformData['name'] }}
+                    <span class="chip chip-{{ $platformInfo['color'] }}" style="font-size: 0.75rem;" title="Status: {{ $integration->status }}">
+                      {{ $platformInfo['icon'] }} {{ $platformInfo['name'] }}
                     </span>
                   @endforeach
                 </div>

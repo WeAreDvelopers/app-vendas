@@ -303,7 +303,9 @@ class MercadoLivreService
     public function prepareListingPayload($product, $listingData, $images = []): array
     {
         // Prepara título otimizado (máx 60 chars)
-        $title = $this->optimizeTitle($product->name, $product->brand);
+        // Prioriza o título do listing se disponível
+        $productName = $listingData['title'] ?? $product->name;
+        $title = $this->optimizeTitle($productName, $product->brand);
 
         // Prepara imagens (máximo 10)
         $pictures = [];
@@ -351,6 +353,24 @@ class MercadoLivreService
             ];
         }
 
+        // Adiciona atributos customizados do listingData se disponíveis
+        if (!empty($listingData['attributes'])) {
+            $customAttributes = is_string($listingData['attributes'])
+                ? json_decode($listingData['attributes'], true)
+                : $listingData['attributes'];
+
+            if (is_array($customAttributes)) {
+                // Mescla atributos customizados, evitando duplicatas
+                foreach ($customAttributes as $attr) {
+                    if (isset($attr['id']) && isset($attr['value_name'])) {
+                        // Remove atributo existente com mesmo ID se houver
+                        $attributes = array_filter($attributes, fn($a) => $a['id'] !== $attr['id']);
+                        $attributes[] = $attr;
+                    }
+                }
+            }
+        }
+
         // Payload base
         $payload = [
             'title' => $title,
@@ -366,9 +386,11 @@ class MercadoLivreService
         ];
 
         // Adiciona descrição se disponível
-        if (!empty($product->description)) {
+        // Prioriza a descrição do listing (plain_text_description), depois a do produto
+        $description = $listingData['plain_text_description'] ?? $product->description ?? null;
+        if (!empty($description)) {
             $payload['description'] = [
-                'plain_text' => $this->stripMarkdown($product->description)
+                'plain_text' => is_string($description) ? $this->stripMarkdown($description) : $description
             ];
         }
 
@@ -383,6 +405,20 @@ class MercadoLivreService
             'free_shipping' => (bool) ($listingData['free_shipping'] ?? false),
             'local_pick_up' => $listingData['shipping_local_pick_up'] !== 'false',
         ];
+
+        // Adiciona dimensões se disponíveis (importante para cálculo de frete)
+        if (!empty($product->width) && !empty($product->height) && !empty($product->length)) {
+            $payload['shipping']['dimensions'] = implode('x', [
+                (float) $product->width,
+                (float) $product->height,
+                (float) $product->length
+            ]);
+        }
+
+        // Adiciona peso se disponível (importante para cálculo de frete)
+        if (!empty($product->weight)) {
+            $payload['shipping']['weight'] = (float) $product->weight;
+        }
 
         // Garantia (se disponível)
         if (!empty($listingData['warranty_type'])) {

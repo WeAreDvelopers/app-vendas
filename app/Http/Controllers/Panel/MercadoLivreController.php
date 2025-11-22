@@ -146,6 +146,7 @@ class MercadoLivreController extends Controller
             $productForValidation->price = $listing->price ?? $product->price;
             $productForValidation->name = $listing->title ?? $product->name;
             $productForValidation->stock = $listing->available_quantity ?? $product->stock;
+            $productForValidation->description = $listing->plain_text_description ?? $product->description;
         }
 
         // Valida qualidade do produto (usando dados do listing se existir)
@@ -198,8 +199,15 @@ class MercadoLivreController extends Controller
             ->orderBy('sort')
             ->get();
 
+        // Cria objeto de produto com os dados do formulário para validação
+        $productForValidation = clone $product;
+        $productForValidation->name = $validated['title'] ?? $product->name;
+        $productForValidation->price = $validated['price'];
+        $productForValidation->stock = $validated['available_quantity'];
+        $productForValidation->description = $validated['plain_text_description'] ?? $product->description;
+
         // Revalida com os novos dados
-        $validation = $this->mlService->validateProduct($product, $images);
+        $validation = $this->mlService->validateProduct($productForValidation, $images);
 
         $validated['quality_score'] = $validation['percentage'];
         $validated['missing_fields'] = $validation['missing_fields'];
@@ -236,6 +244,7 @@ class MercadoLivreController extends Controller
         $productForValidation->price = $listing->price ?? $product->price;
         $productForValidation->name = $listing->title ?? $product->name;
         $productForValidation->stock = $listing->available_quantity ?? $product->stock;
+        $productForValidation->description = $listing->plain_text_description ?? $product->description;
 
         // Valida antes de publicar
         $validation = $this->mlService->validateProduct($productForValidation, $images);

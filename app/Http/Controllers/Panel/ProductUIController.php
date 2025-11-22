@@ -24,10 +24,8 @@ class ProductUIController extends Controller {
             });
         }
 
-        // Carrega as integrações ativas junto com os produtos
-        $products = $query->with(['integrations' => function($q) {
-            $q->where('status', 'active');
-        }])
+        // Carrega todas as integrações junto com os produtos
+        $products = $query->with('integrations')
         ->orderByDesc('id')
         ->paginate(24)
         ->withQueryString();

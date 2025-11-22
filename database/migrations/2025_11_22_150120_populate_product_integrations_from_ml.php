@@ -11,7 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Insere registros de integração para produtos que já têm listings no ML
+        // Insere registros de integração para todos os produtos que têm listings no ML
+        // (incluindo drafts que ainda não foram publicados)
         DB::statement("
             INSERT INTO product_integrations (product_id, platform, external_id, status, metadata, last_sync_at, published_at, created_at, updated_at)
             SELECT
@@ -19,7 +20,7 @@ return new class extends Migration
                 'mercado_livre' as platform,
                 ml_id as external_id,
                 CASE
-                    WHEN status = 'active' THEN 'active'
+                    WHEN status = 'active' AND ml_id IS NOT NULL THEN 'active'
                     WHEN status = 'paused' THEN 'paused'
                     WHEN status = 'closed' THEN 'removed'
                     ELSE 'pending'
@@ -35,7 +36,6 @@ return new class extends Migration
                 created_at,
                 updated_at
             FROM mercado_livre_listings
-            WHERE ml_id IS NOT NULL
             ON DUPLICATE KEY UPDATE
                 external_id = VALUES(external_id),
                 status = VALUES(status),
