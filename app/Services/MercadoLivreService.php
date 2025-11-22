@@ -317,6 +317,8 @@ class MercadoLivreService
         }
 
         // Prepara atributos da categoria
+        // IMPORTANTE: Estes são atributos básicos do produto que serão
+        // sobrescritos se o usuário preencher manualmente no formulário
         $attributes = [];
 
         // Atributo BRAND (obrigatório em muitas categorias)
@@ -350,6 +352,59 @@ class MercadoLivreService
             $attributes[] = [
                 'id' => 'SELLER_SKU',
                 'value_name' => $product->sku
+            ];
+        }
+
+        // Condição do item (novo/usado)
+        // Usa 'new' como padrão se não tiver o campo condition
+        $condition = $product->condition ?? 'new';
+        $attributes[] = [
+            'id' => 'ITEM_CONDITION',
+            'value_name' => $condition === 'used' ? 'Usado' : 'Novo'
+        ];
+
+        // Dimensões e peso do pacote (se disponíveis)
+        if (!empty($product->weight)) {
+            $attributes[] = [
+                'id' => 'PACKAGE_WEIGHT',
+                'value_name' => (string) $product->weight,
+                'value_struct' => [
+                    'number' => (float) $product->weight,
+                    'unit' => 'kg'
+                ]
+            ];
+        }
+
+        if (!empty($product->length)) {
+            $attributes[] = [
+                'id' => 'PACKAGE_LENGTH',
+                'value_name' => (string) $product->length,
+                'value_struct' => [
+                    'number' => (float) $product->length,
+                    'unit' => 'cm'
+                ]
+            ];
+        }
+
+        if (!empty($product->width)) {
+            $attributes[] = [
+                'id' => 'PACKAGE_WIDTH',
+                'value_name' => (string) $product->width,
+                'value_struct' => [
+                    'number' => (float) $product->width,
+                    'unit' => 'cm'
+                ]
+            ];
+        }
+
+        if (!empty($product->height)) {
+            $attributes[] = [
+                'id' => 'PACKAGE_HEIGHT',
+                'value_name' => (string) $product->height,
+                'value_struct' => [
+                    'number' => (float) $product->height,
+                    'unit' => 'cm'
+                ]
             ];
         }
 

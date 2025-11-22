@@ -489,6 +489,12 @@ function renderCategoryAttributes(data) {
     savedAttributesMap[attr.id] = attr.value_name;
   });
 
+  // Carrega atributos mapeados do produto
+  const productAttributes = @json($productAttributes ?? []);
+
+  // Mescla: prioriza valores salvos, depois valores do produto
+  const attributeValues = {...productAttributes, ...savedAttributesMap};
+
   // Renderiza atributos obrigatórios
   if (data.required && data.required.length > 0) {
     const title = document.createElement('h6');
@@ -497,7 +503,7 @@ function renderCategoryAttributes(data) {
     requiredContainer.appendChild(title);
 
     data.required.forEach(attr => {
-      requiredContainer.appendChild(createAttributeField(attr, true, savedAttributesMap[attr.id]));
+      requiredContainer.appendChild(createAttributeField(attr, true, attributeValues[attr.id]));
     });
   }
 
@@ -510,7 +516,7 @@ function renderCategoryAttributes(data) {
 
     // Mostra apenas os primeiros 5 atributos opcionais
     data.optional.slice(0, 5).forEach(attr => {
-      optionalContainer.appendChild(createAttributeField(attr, false, savedAttributesMap[attr.id]));
+      optionalContainer.appendChild(createAttributeField(attr, false, attributeValues[attr.id]));
     });
   }
 }

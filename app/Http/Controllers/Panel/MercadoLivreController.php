@@ -155,12 +155,29 @@ class MercadoLivreController extends Controller
         // Prediz categoria baseada no título
         $suggestedCategories = $this->mlService->predictCategory($product->name);
 
+        // Mapeia campos do produto para atributos do ML
+        $productAttributes = [
+            'BRAND' => $product->brand ?? null,
+            'MODEL' => $product->sku ?? null, // Usa SKU como modelo se não tiver model
+            'GTIN' => $product->ean ?? null,
+            'SELLER_SKU' => $product->sku ?? null,
+            'ITEM_CONDITION' => isset($product->condition) && $product->condition === 'used' ? 'Usado' : 'Novo',
+            'PACKAGE_WEIGHT' => $product->weight ?? null,
+            'PACKAGE_LENGTH' => $product->length ?? null,
+            'PACKAGE_WIDTH' => $product->width ?? null,
+            'PACKAGE_HEIGHT' => $product->height ?? null,
+        ];
+
+        // Remove valores vazios
+        $productAttributes = array_filter($productAttributes, fn($v) => !empty($v));
+
         return view('panel.mercado_livre.prepare', compact(
             'product',
             'images',
             'listing',
             'validation',
-            'suggestedCategories'
+            'suggestedCategories',
+            'productAttributes'
         ));
     }
 
