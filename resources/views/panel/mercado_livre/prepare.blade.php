@@ -483,14 +483,27 @@ function renderCategoryAttributes(data) {
   optionalContainer.innerHTML = '';
 
   // Carrega atributos salvos do listing
-  const savedAttributes = @json(json_decode($listing->attributes ?? '[]', true) ?? []);
+  let savedAttributes = @json(json_decode($listing->attributes ?? '[]', true) ?? []);
+
+  // Garante que savedAttributes é um array
+  if (!Array.isArray(savedAttributes)) {
+    savedAttributes = [];
+  }
+
   const savedAttributesMap = {};
   savedAttributes.forEach(attr => {
-    savedAttributesMap[attr.id] = attr.value_name;
+    if (attr && attr.id && attr.value_name) {
+      savedAttributesMap[attr.id] = attr.value_name;
+    }
   });
 
   // Carrega atributos mapeados do produto
-  const productAttributes = @json($productAttributes ?? []);
+  let productAttributes = @json($productAttributes ?? []);
+
+  // Garante que productAttributes é um objeto
+  if (typeof productAttributes !== 'object' || productAttributes === null) {
+    productAttributes = {};
+  }
 
   // Mescla: prioriza valores salvos, depois valores do produto
   const attributeValues = {...productAttributes, ...savedAttributesMap};
