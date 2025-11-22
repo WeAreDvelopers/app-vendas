@@ -609,23 +609,37 @@ class MercadoLivreService
 
                 // Atributos que devem ser exibidos para o usuário preencher
                 $userFillableAttributes = [
-                    'BRAND', 'MODEL', 'GTIN', 'COLOR', 'MAIN_COLOR', 'SIZE',
-                    'TOWEL_TYPE', 'PATTERN_NAME', 'COMPOSITION', 'FABRIC',
+                    // Identificação
+                    'BRAND', 'MODEL', 'GTIN', 'SELLER_SKU', 'MPN',
+                    // Características físicas
+                    'COLOR', 'MAIN_COLOR', 'SIZE', 'MATERIAL', 'FABRIC', 'COMPOSITION',
+                    // Específicos por categoria
+                    'TOWEL_TYPE', 'PATTERN_NAME', 'GENDER', 'AGE_GROUP', 'CAPACITY',
+                    // Embalagem e quantidade
                     'UNITS_PER_PACK', 'PACKAGE_LENGTH', 'PACKAGE_WIDTH', 'PACKAGE_HEIGHT',
-                    'PACKAGE_WEIGHT', 'MATERIAL', 'GENDER', 'AGE_GROUP', 'CAPACITY'
+                    'PACKAGE_WEIGHT', 'UNIT_WEIGHT',
+                    // Toalhas específicas
+                    'BATH_TOWELS_PER_PACKAGE', 'BATH_TOWELS_NUMBER', 'BATH_TOWEL_WIDTH',
+                    'TOWEL_LENGTH',
+                    // Condição e motivos
+                    'ITEM_CONDITION', 'EMPTY_GTIN_REASON',
+                    // Dados do seller
+                    'SELLER_PACKAGE_DATA_SOURCE', 'SELLER_PACKAGE_WIDTH', 'SELLER_PACKAGE_LENGTH',
+                    'SELLER_PACKAGE_HEIGHT', 'SELLER_PACKAGE_TYPE', 'SELLER_PACKAGE_WEIGHT',
                 ];
 
                 // Atributos que terão valores padrão automáticos
+                // IMPORTANTE: Removemos atributos "not modifiable" que o ML ignora
                 $defaultValues = [
                     'ITEM_CONDITION' => 'Novo',
                     'IS_KIT' => 'Não',
-                    'WITH_POSITIVE_IMPACT' => 'Não',
-                    'IS_FLAMMABLE' => 'Não',
-                    'IS_SUITABLE_FOR_SHIPMENT' => 'Sim',
-                    'HAS_COMPATIBILITIES' => 'Não',
-                    'IS_NEW_OFFER' => 'Sim',
-                    'HAZMAT_TRANSPORTABILITY' => 'Livre',
-                    'SHIPMENT_PACKING' => 'Caixa',
+                    // Removidos atributos não modificáveis:
+                    // WITH_POSITIVE_IMPACT, IS_FLAMMABLE, IS_SUITABLE_FOR_SHIPMENT,
+                    // HAS_COMPATIBILITIES, IS_NEW_OFFER, HAZMAT_TRANSPORTABILITY,
+                    // SHIPMENT_PACKING, IMPORT_DUTY, FOODS_AND_DRINKS, MEDICINES,
+                    // BATTERIES_FEATURES, ADDITIONAL_INFO_REQUIRED, EXCLUDED_PLATFORMS,
+                    // PRODUCT_CHEMICAL_FEATURES, PRODUCT_FEATURES, LIMITED_MARKETPLACE_VISIBILITY_REASONS,
+                    // VERTICAL_TAGS
                 ];
 
                 // Filtra e organiza atributos
@@ -649,10 +663,15 @@ class MercadoLivreService
                     ];
 
                     // Verifica se é obrigatório
+                    // Nota: A API do ML retorna tags como objeto com chaves booleanas
                     $tags = $attr['tags'] ?? [];
-                    $isRequired = in_array('required', $tags) || in_array('catalog_required', $tags);
+                    $isRequired = !empty($tags['required']) || !empty($tags['catalog_required']);
 
-                    if ($isRequired) {
+                    // Verifica se o atributo é modificável
+                    // Atributos com 'read_only' ou 'hidden' NÃO devem ser enviados
+                    $isModifiable = empty($tags['read_only']) && empty($tags['hidden']);
+
+                    if ($isRequired && $isModifiable) {
                         // Se tem valor padrão, adiciona aos auto_filled
                         if (isset($defaultValues[$attr['id']])) {
                             $organized['auto_filled'][] = $attribute;
@@ -661,13 +680,10 @@ class MercadoLivreService
                         elseif (in_array($attr['id'], $userFillableAttributes)) {
                             $organized['required'][] = $attribute;
                         }
-                        // Senão, tenta usar primeiro valor disponível ou adiciona aos auto_filled
-                        else {
-                            $attribute['default_value'] = $attr['values'][0]['name'] ?? null;
-                            $organized['auto_filled'][] = $attribute;
-                        }
-                    } else {
-                        // Apenas opcionais relevantes para o usuário
+                        // Atributos obrigatórios mas não na lista são ignorados
+                        // (geralmente são calculados pelo ML automaticamente)
+                    } elseif (!$isRequired && $isModifiable) {
+                        // Apenas opcionais relevantes e modificáveis para o usuário
                         if (in_array($attr['id'], $userFillableAttributes)) {
                             $organized['optional'][] = $attribute;
                         }

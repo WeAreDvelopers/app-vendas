@@ -261,13 +261,13 @@
                      name="free_shipping"
                      value="1"
                      id="freeShippingCheck"
-                     {{ ($listing->free_shipping ?? false) ? 'checked' : '' }}>
-              <label class="form-check-label">
-                Frete Grátis (melhor conversão)
+                     disabled>
+              <label class="form-check-label text-muted">
+                Frete Grátis (indisponível)
               </label>
             </div>
-            <small class="text-muted">
-              <i class="bi bi-info-circle"></i> Requer Mercado Envios Full (me1)
+            <small class="text-warning">
+              <i class="bi bi-exclamation-triangle"></i> Requer Mercado Envios Full (me1) - não disponível nesta conta
             </small>
           </div>
 
