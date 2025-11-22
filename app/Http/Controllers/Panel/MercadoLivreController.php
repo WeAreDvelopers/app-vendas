@@ -186,12 +186,30 @@ class MercadoLivreController extends Controller
             'shipping_local_pick_up' => 'required|in:true,false',
             'warranty_type' => 'nullable|string|max:50',
             'warranty_time' => 'nullable|string|max:50',
+            'ml_attr' => 'nullable|array',
+            'ml_attr.*' => 'nullable|string',
         ]);
 
         // Usa título do produto se não informado
         if (empty($validated['title'])) {
             $validated['title'] = mb_substr($product->name, 0, 60);
         }
+
+        // Processa atributos customizados da categoria
+        $customAttributes = [];
+        if (!empty($validated['ml_attr'])) {
+            foreach ($validated['ml_attr'] as $attrId => $attrValue) {
+                if (!empty($attrValue)) {
+                    $customAttributes[] = [
+                        'id' => $attrId,
+                        'value_name' => $attrValue
+                    ];
+                }
+            }
+        }
+
+        // Adiciona atributos customizados ao validated
+        $validated['attributes'] = json_encode($customAttributes);
 
         // Busca imagens para validação
         $images = DB::table('product_images')

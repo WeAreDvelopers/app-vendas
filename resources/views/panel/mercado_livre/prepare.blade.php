@@ -177,6 +177,33 @@
         </div>
       </div>
 
+      <!-- Atributos da Categoria -->
+      <div class="notion-card mb-3" id="categoryAttributesCard" style="display: none;">
+        <h5 class="mb-3">
+          <i class="bi bi-list-check text-primary"></i> Atributos da Categoria
+        </h5>
+
+        <div id="categoryAttributesLoading" class="text-center py-4">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Carregando atributos...</span>
+          </div>
+          <p class="mt-2 text-muted">Carregando atributos obrigatórios da categoria...</p>
+        </div>
+
+        <div id="categoryAttributesContent" style="display: none;">
+          <!-- Atributos obrigatórios -->
+          <div id="requiredAttributes" class="mb-3"></div>
+
+          <!-- Atributos opcionais -->
+          <div id="optionalAttributes"></div>
+        </div>
+
+        <div id="categoryAttributesError" class="alert alert-warning" style="display: none;">
+          <i class="bi bi-exclamation-triangle"></i>
+          Não foi possível carregar os atributos da categoria. Tente novamente.
+        </div>
+      </div>
+
       <!-- Descrição -->
       <div class="notion-card mb-3">
         <h5 class="mb-3">
@@ -233,11 +260,15 @@
                      type="checkbox"
                      name="free_shipping"
                      value="1"
+                     id="freeShippingCheck"
                      {{ ($listing->free_shipping ?? false) ? 'checked' : '' }}>
               <label class="form-check-label">
                 Frete Grátis (melhor conversão)
               </label>
             </div>
+            <small class="text-muted">
+              <i class="bi bi-info-circle"></i> Requer Mercado Envios Full (me1)
+            </small>
           </div>
 
           <div class="col-12">
@@ -403,5 +434,188 @@ function publishNow() {
     form.submit();
   }
 }
+
+// Carrega atributos da categoria quando selecionada
+const categorySelect = document.getElementById('mlCategory');
+let currentCategoryAttributes = {};
+
+categorySelect.addEventListener('change', function() {
+  const categoryId = this.value;
+
+  if (!categoryId) {
+    document.getElementById('categoryAttributesCard').style.display = 'none';
+    return;
+  }
+
+  // Mostra card de atributos
+  document.getElementById('categoryAttributesCard').style.display = 'block';
+  document.getElementById('categoryAttributesLoading').style.display = 'block';
+  document.getElementById('categoryAttributesContent').style.display = 'none';
+  document.getElementById('categoryAttributesError').style.display = 'none';
+
+  // Busca atributos da categoria
+  fetch(`{{ route('panel.mercado-livre.category-attributes') }}?category_id=${categoryId}`)
+    .then(response => response.json())
+    .then(data => {
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      currentCategoryAttributes = data;
+      renderCategoryAttributes(data);
+
+      document.getElementById('categoryAttributesLoading').style.display = 'none';
+      document.getElementById('categoryAttributesContent').style.display = 'block';
+    })
+    .catch(error => {
+      console.error('Erro ao carregar atributos:', error);
+      document.getElementById('categoryAttributesLoading').style.display = 'none';
+      document.getElementById('categoryAttributesError').style.display = 'block';
+    });
+});
+
+// Renderiza campos de atributos
+function renderCategoryAttributes(data) {
+  const requiredContainer = document.getElementById('requiredAttributes');
+  const optionalContainer = document.getElementById('optionalAttributes');
+
+  requiredContainer.innerHTML = '';
+  optionalContainer.innerHTML = '';
+
+  // Carrega atributos salvos do listing
+  const savedAttributes = @json(json_decode($listing->attributes ?? '[]', true) ?? []);
+  const savedAttributesMap = {};
+  savedAttributes.forEach(attr => {
+    savedAttributesMap[attr.id] = attr.value_name;
+  });
+
+  // Renderiza atributos obrigatórios
+  if (data.required && data.required.length > 0) {
+    const title = document.createElement('h6');
+    title.className = 'text-danger mb-3';
+    title.innerHTML = '<i class="bi bi-asterisk"></i> Atributos Obrigatórios';
+    requiredContainer.appendChild(title);
+
+    data.required.forEach(attr => {
+      requiredContainer.appendChild(createAttributeField(attr, true, savedAttributesMap[attr.id]));
+    });
+  }
+
+  // Renderiza atributos opcionais (apenas alguns importantes)
+  if (data.optional && data.optional.length > 0) {
+    const title = document.createElement('h6');
+    title.className = 'text-muted mb-3 mt-4';
+    title.innerHTML = '<i class="bi bi-plus-circle"></i> Atributos Opcionais (recomendados)';
+    optionalContainer.appendChild(title);
+
+    // Mostra apenas os primeiros 5 atributos opcionais
+    data.optional.slice(0, 5).forEach(attr => {
+      optionalContainer.appendChild(createAttributeField(attr, false, savedAttributesMap[attr.id]));
+    });
+  }
+}
+
+// Cria campo para um atributo
+function createAttributeField(attr, required, savedValue) {
+  const div = document.createElement('div');
+  div.className = 'mb-3';
+
+  const label = document.createElement('label');
+  label.className = 'form-label';
+  label.innerHTML = attr.name + (required ? ' <span class="text-danger">*</span>' : '');
+
+  if (attr.hint) {
+    const hint = document.createElement('small');
+    hint.className = 'text-muted d-block';
+    hint.textContent = attr.hint;
+    label.appendChild(hint);
+  }
+
+  div.appendChild(label);
+
+  // Define o campo baseado no tipo
+  let input;
+
+  if (attr.values && attr.values.length > 0) {
+    // Select com opções predefinidas
+    input = document.createElement('select');
+    input.className = 'form-select';
+    input.name = `ml_attr[${attr.id}]`;
+    input.dataset.attrId = attr.id;
+    input.dataset.attrName = attr.name;
+
+    const emptyOption = document.createElement('option');
+    emptyOption.value = '';
+    emptyOption.textContent = 'Selecione...';
+    input.appendChild(emptyOption);
+
+    attr.values.forEach(value => {
+      const option = document.createElement('option');
+      option.value = value.id || value.name;
+      option.textContent = value.name;
+      if (savedValue && (savedValue === value.name || savedValue === value.id)) {
+        option.selected = true;
+      }
+      input.appendChild(option);
+    });
+  } else if (attr.value_type === 'number' || attr.value_type === 'number_unit') {
+    // Campo numérico
+    input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'form-control';
+    input.name = `ml_attr[${attr.id}]`;
+    input.dataset.attrId = attr.id;
+    input.dataset.attrName = attr.name;
+    input.step = '0.01';
+    if (savedValue) input.value = savedValue;
+
+    // Se tiver unidades, adiciona select de unidade
+    if (attr.allowed_units && attr.allowed_units.length > 0) {
+      const inputGroup = document.createElement('div');
+      inputGroup.className = 'input-group';
+
+      inputGroup.appendChild(input);
+
+      const unitSelect = document.createElement('select');
+      unitSelect.className = 'form-select';
+      unitSelect.style.maxWidth = '120px';
+      unitSelect.name = `ml_attr_unit[${attr.id}]`;
+
+      attr.allowed_units.forEach(unit => {
+        const option = document.createElement('option');
+        option.value = unit.id;
+        option.textContent = unit.name;
+        unitSelect.appendChild(option);
+      });
+
+      inputGroup.appendChild(unitSelect);
+      div.appendChild(inputGroup);
+      return div;
+    }
+  } else {
+    // Campo de texto
+    input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'form-control';
+    input.name = `ml_attr[${attr.id}]`;
+    input.dataset.attrId = attr.id;
+    input.dataset.attrName = attr.name;
+    if (savedValue) input.value = savedValue;
+  }
+
+  if (required) {
+    input.required = true;
+  }
+
+  div.appendChild(input);
+  return div;
+}
+
+// Carrega atributos se já tiver categoria selecionada
+window.addEventListener('load', function() {
+  if (categorySelect.value) {
+    categorySelect.dispatchEvent(new Event('change'));
+  }
+});
 </script>
 @endpush

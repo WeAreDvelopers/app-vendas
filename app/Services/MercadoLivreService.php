@@ -371,6 +371,31 @@ class MercadoLivreService
             }
         }
 
+        // Adiciona atributos com valores padrão automáticos da categoria
+        if (!empty($listingData['category_id'])) {
+            $categoryAttrs = $this->getCategoryAttributes($listingData['category_id']);
+
+            if (!empty($categoryAttrs['auto_filled'])) {
+                foreach ($categoryAttrs['auto_filled'] as $attr) {
+                    // Apenas adiciona se não foi preenchido manualmente
+                    $attrExists = false;
+                    foreach ($attributes as $existingAttr) {
+                        if ($existingAttr['id'] === $attr['id']) {
+                            $attrExists = true;
+                            break;
+                        }
+                    }
+
+                    if (!$attrExists && !empty($attr['default_value'])) {
+                        $attributes[] = [
+                            'id' => $attr['id'],
+                            'value_name' => $attr['default_value']
+                        ];
+                    }
+                }
+            }
+        }
+
         // Payload base
         $payload = [
             'title' => $title,
@@ -400,9 +425,20 @@ class MercadoLivreService
         }
 
         // Configurações de envio
+        // Nota: Frete grátis requer modo 'me1' (Mercado Envios Full)
+        // Se usar 'me2' (Mercado Envios normal), não pode oferecer frete grátis
+        $shippingMode = $listingData['shipping_mode'] ?? 'me2';
+        $freeShipping = (bool) ($listingData['free_shipping'] ?? false);
+
+        // Desabilita frete grátis se não estiver usando me1
+        if ($shippingMode !== 'me1' && $freeShipping) {
+            $freeShipping = false;
+            Log::warning('Frete grátis desabilitado: requer modo me1 (Mercado Envios Full)');
+        }
+
         $payload['shipping'] = [
-            'mode' => $listingData['shipping_mode'] ?? 'me2',
-            'free_shipping' => (bool) ($listingData['free_shipping'] ?? false),
+            'mode' => $shippingMode,
+            'free_shipping' => $freeShipping,
             'local_pick_up' => $listingData['shipping_local_pick_up'] !== 'false',
         ];
 
@@ -561,6 +597,7 @@ class MercadoLivreService
 
     /**
      * Busca atributos obrigatórios de uma categoria
+     * Retorna apenas os atributos necessários para publicação
      */
     public function getCategoryAttributes(string $categoryId): array
     {
@@ -568,13 +605,105 @@ class MercadoLivreService
             $response = Http::timeout(10)->get(self::API_BASE_URL . "/categories/{$categoryId}/attributes");
 
             if ($response->successful()) {
-                return $response->json();
+                $attributes = $response->json();
+
+                // Atributos que devem ser exibidos para o usuário preencher
+                $userFillableAttributes = [
+                    'BRAND', 'MODEL', 'GTIN', 'COLOR', 'MAIN_COLOR', 'SIZE',
+                    'TOWEL_TYPE', 'PATTERN_NAME', 'COMPOSITION', 'FABRIC',
+                    'UNITS_PER_PACK', 'PACKAGE_LENGTH', 'PACKAGE_WIDTH', 'PACKAGE_HEIGHT',
+                    'PACKAGE_WEIGHT', 'MATERIAL', 'GENDER', 'AGE_GROUP', 'CAPACITY'
+                ];
+
+                // Atributos que terão valores padrão automáticos
+                $defaultValues = [
+                    'ITEM_CONDITION' => 'Novo',
+                    'IS_KIT' => 'Não',
+                    'WITH_POSITIVE_IMPACT' => 'Não',
+                    'IS_FLAMMABLE' => 'Não',
+                    'IS_SUITABLE_FOR_SHIPMENT' => 'Sim',
+                    'HAS_COMPATIBILITIES' => 'Não',
+                    'IS_NEW_OFFER' => 'Sim',
+                    'HAZMAT_TRANSPORTABILITY' => 'Livre',
+                    'SHIPMENT_PACKING' => 'Caixa',
+                ];
+
+                // Filtra e organiza atributos
+                $organized = [
+                    'required' => [],
+                    'optional' => [],
+                    'auto_filled' => [],
+                ];
+
+                foreach ($attributes as $attr) {
+                    $attribute = [
+                        'id' => $attr['id'],
+                        'name' => $attr['name'],
+                        'value_type' => $attr['value_type'] ?? 'string',
+                        'values' => $attr['values'] ?? [],
+                        'tags' => $attr['tags'] ?? [],
+                        'hint' => $attr['hint'] ?? null,
+                        'tooltip' => $attr['tooltip'] ?? null,
+                        'allowed_units' => $attr['allowed_units'] ?? [],
+                        'default_value' => $defaultValues[$attr['id']] ?? null,
+                    ];
+
+                    // Verifica se é obrigatório
+                    $tags = $attr['tags'] ?? [];
+                    $isRequired = in_array('required', $tags) || in_array('catalog_required', $tags);
+
+                    if ($isRequired) {
+                        // Se tem valor padrão, adiciona aos auto_filled
+                        if (isset($defaultValues[$attr['id']])) {
+                            $organized['auto_filled'][] = $attribute;
+                        }
+                        // Se é atributo preenchível pelo usuário, adiciona aos required
+                        elseif (in_array($attr['id'], $userFillableAttributes)) {
+                            $organized['required'][] = $attribute;
+                        }
+                        // Senão, tenta usar primeiro valor disponível ou adiciona aos auto_filled
+                        else {
+                            $attribute['default_value'] = $attr['values'][0]['name'] ?? null;
+                            $organized['auto_filled'][] = $attribute;
+                        }
+                    } else {
+                        // Apenas opcionais relevantes para o usuário
+                        if (in_array($attr['id'], $userFillableAttributes)) {
+                            $organized['optional'][] = $attribute;
+                        }
+                    }
+                }
+
+                return $organized;
+            }
+
+            return ['required' => [], 'optional' => [], 'auto_filled' => []];
+
+        } catch (\Exception $e) {
+            Log::error("Error fetching category attributes: " . $e->getMessage());
+            return ['required' => [], 'optional' => [], 'auto_filled' => []];
+        }
+    }
+
+    /**
+     * Busca valores possíveis de um atributo específico
+     */
+    public function getAttributeValues(string $categoryId, string $attributeId): array
+    {
+        try {
+            $attributes = $this->getCategoryAttributes($categoryId);
+
+            // Procura o atributo específico
+            foreach (array_merge($attributes['required'], $attributes['optional']) as $attr) {
+                if ($attr['id'] === $attributeId) {
+                    return $attr['values'] ?? [];
+                }
             }
 
             return [];
 
         } catch (\Exception $e) {
-            Log::error("Error fetching category attributes: " . $e->getMessage());
+            Log::error("Error fetching attribute values: " . $e->getMessage());
             return [];
         }
     }
