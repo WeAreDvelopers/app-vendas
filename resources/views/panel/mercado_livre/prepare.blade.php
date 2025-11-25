@@ -18,7 +18,6 @@
       {{ session('error') }}
     </div>
   @endif
-
   @if(!empty($listing?->validation_errors))
     <div class="alert alert-warning">
       <strong>Atenção:</strong> ainda existem pontos a melhorar:
@@ -32,7 +31,6 @@
 
   <form method="POST" action="{{ route('panel.mercado-livre.save-draft', $product->id) }}">
     @csrf
-
     <div class="row">
       <!-- Título -->
       <div class="col-md-6 mb-3">
