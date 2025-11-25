@@ -231,8 +231,8 @@
         Atributos da categoria
       </label>
       <div id="categoryAttributesContainer">
-        @if(!empty($categoryAttributes) && (isset($categoryAttributes['required']) || isset($categoryAttributes['optional'])))
-          @foreach(array_merge($categoryAttributes['required'] ?? [], $categoryAttributes['optional'] ?? []) as $attr)
+        @if(!empty($categoryAttributes))
+          @foreach($categoryAttributes as $attr)
             <div class="mb-2">
               <label class="form-label">
                 {{ $attr['name'] }}
@@ -242,8 +242,7 @@
               </label>
 
               @php
-                // Os atributos já vêm decodificados do controller
-                $savedAttributes = is_array($listing->attributes ?? null) ? $listing->attributes : [];
+                $savedAttributes = json_decode($listing->attributes ?? '[]', true);
                 $saved = collect($savedAttributes)->firstWhere('id', $attr['id']);
               @endphp
 
@@ -283,7 +282,7 @@
         @forelse($images as $img)
           <div class="col-md-3 mb-3">
             <div class="card">
-              <img src="{{ asset( $img->path) }}"
+              <img src="{{ asset('storage/product_images/' . $img->path) }}"
                    class="card-img-top"
                    alt="Imagem do produto">
               <div class="card-body p-2">
@@ -330,19 +329,6 @@ if (titleInput && titleCount) {
 
 function publishNow() {
   if (confirm('Deseja publicar este anúncio no Mercado Livre agora?')) {
-<<<<<<< HEAD
-    // Adiciona campo hidden ao formulário para indicar que deve publicar após salvar
-    const mainForm = document.querySelector('form[action*="save-draft"]');
-
-    const publishFlag = document.createElement('input');
-    publishFlag.type = 'hidden';
-    publishFlag.name = 'publish_after_save';
-    publishFlag.value = '1';
-    mainForm.appendChild(publishFlag);
-
-    // Submit do formulário principal (salva rascunho + publica)
-    mainForm.submit();
-=======
     // Adiciona campo hidden para indicar que deve publicar após salvar
     const form = document.querySelector('form');
     const publishInput = document.createElement('input');
@@ -353,7 +339,6 @@ function publishNow() {
 
     // Submete o formulário (salva o rascunho E depois publica, via controller)
     form.submit();
->>>>>>> 55aa03b2a7c670b5485192e48d1c804fe312aabb
   }
 }
 
@@ -386,25 +371,18 @@ function renderCategoryAttributes() {
   const container = document.getElementById('categoryAttributesContainer');
   container.innerHTML = '';
 
-  // Mescla atributos required e optional
-  const allAttributes = [
-    ...(currentCategoryAttributes.required || []),
-    ...(currentCategoryAttributes.optional || [])
-  ];
-
-  if (allAttributes.length === 0) {
+  if (!Array.isArray(currentCategoryAttributes) || currentCategoryAttributes.length === 0) {
     container.innerHTML = '<p class="text-muted">Nenhum atributo disponível para esta categoria.</p>';
     return;
   }
 
   @php
-    // Os atributos já vêm decodificados do controller
-    $savedAttributes = is_array($listing->attributes ?? null) ? $listing->attributes : [];
+    $savedAttributes = json_decode($listing->attributes ?? '[]', true);
   @endphp
 
-  const savedAttributes = @json($savedAttributes);
+  const savedAttributes = @json($savedAttributes ?? []);
 
-  allAttributes.forEach(attr => {
+  currentCategoryAttributes.forEach(attr => {
     const wrapper = document.createElement('div');
     wrapper.classList.add('mb-2');
 
