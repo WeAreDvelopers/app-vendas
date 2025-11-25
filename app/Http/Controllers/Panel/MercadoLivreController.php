@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Services\MercadoLivreService;
+use App\Jobs\PublishListingToML;
 
 class MercadoLivreController extends Controller
 {
@@ -270,7 +271,7 @@ class MercadoLivreController extends Controller
     }
 
     /**
-     * Publica o anúncio no Mercado Livre
+     * Publica o anúncio no Mercado Livre (via Job/Queue)
      */
     public function publish(int $productId)
     {
@@ -310,11 +311,10 @@ class MercadoLivreController extends Controller
             return back()->with('error', 'Você precisa conectar sua conta do Mercado Livre primeiro.');
         }
 
-        // Prepara payload
+        // Verifica atributos obrigatórios da categoria
         $listingData = (array) $listing;
         $payload = $this->mlService->prepareListingPayload($product, $listingData, $images);
 
-        // Verifica atributos obrigatórios da categoria
         $categoryAttrs = $this->mlService->getCategoryAttributes($listing->category_id);
         $missingRequired = [];
 
@@ -332,40 +332,19 @@ class MercadoLivreController extends Controller
             return back()->with('error', 'Faltam atributos obrigatórios: ' . implode(', ', $missingRequired) . '. Por favor, preencha todos os campos obrigatórios.');
         }
 
-        // Publica no Mercado Livre
-        $result = $this->mlService->publishListing($token->access_token, $payload);
-
-        if (!$result || isset($result['error'])) {
-            $errorMsg = $result['message'] ?? 'Erro desconhecido ao publicar';
-
-            // Log detalhado do erro
-            \Log::error('Erro ao publicar no ML', [
-                'product_id' => $productId,
-                'error' => $result,
-                'payload' => $payload
-            ]);
-
-            // Mostra detalhes do erro se houver
-            if (isset($result['details']['cause'])) {
-                $causes = collect($result['details']['cause'])->pluck('message')->implode('; ');
-                return back()->with('error', 'Erro ao publicar no ML: ' . $errorMsg . ' - ' . $causes);
-            }
-
-            return back()->with('error', 'Erro ao publicar no ML: ' . $errorMsg);
-        }
-
-        // Atualiza listing com dados do ML
+        // Atualiza status para 'queued'
         DB::table('mercado_livre_listings')
             ->where('id', $listing->id)
             ->update([
-                'ml_id' => $result['id'],
-                'status' => $result['status'],
-                'published_at' => now(),
-                'last_sync_at' => now(),
+                'status' => 'queued',
                 'updated_at' => now()
             ]);
 
-        return back()->with('ok', 'Anúncio publicado no Mercado Livre com sucesso! ID: ' . $result['id']);
+        // Despacha Job para a fila
+        PublishListingToML::dispatch($productId, auth()->id())
+            ->onQueue('mercado-livre');
+
+        return back()->with('ok', 'Anúncio enviado para publicação! Você receberá uma notificação quando o processo for concluído.');
     }
 
     /**

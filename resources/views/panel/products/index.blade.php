@@ -42,6 +42,32 @@
                   @endforeach
                 </div>
               @endif
+              @if($p->ml_listing)
+                <div class="mt-1">
+                  @php
+                    $mlStatus = $p->ml_listing->status ?? 'draft';
+                    $mlBadgeColor = match($mlStatus) {
+                      'queued' => 'info',
+                      'processing' => 'warning',
+                      'active' => 'success',
+                      'failed' => 'danger',
+                      'draft' => 'secondary',
+                      default => 'secondary'
+                    };
+                    $mlIcon = match($mlStatus) {
+                      'queued' => '<i class="bi bi-clock-history"></i>',
+                      'processing' => '<i class="bi bi-arrow-repeat"></i>',
+                      'active' => '<i class="bi bi-check-circle"></i>',
+                      'failed' => '<i class="bi bi-x-circle"></i>',
+                      'draft' => '<i class="bi bi-file-earmark"></i>',
+                      default => '<i class="bi bi-question-circle"></i>'
+                    };
+                  @endphp
+                  <span class="chip chip-{{ $mlBadgeColor }}" style="font-size: 0.75rem;" title="Status ML: {{ $mlStatus }}">
+                    {!! $mlIcon !!} ML: {{ ucfirst($mlStatus) }}
+                  </span>
+                </div>
+              @endif
             </td>
             <td>{{ $p->price ? 'R$ ' . number_format($p->price, 2, ',', '.') : '-' }}</td>
             <td>{{ $p->stock }}</td>

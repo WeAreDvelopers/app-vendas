@@ -30,6 +30,18 @@ class ProductUIController extends Controller {
         ->paginate(24)
         ->withQueryString();
 
+        // Carrega status do Mercado Livre para cada produto
+        $productIds = $products->pluck('id');
+        $mlListings = DB::table('mercado_livre_listings')
+            ->whereIn('product_id', $productIds)
+            ->get()
+            ->keyBy('product_id');
+
+        // Adiciona ml_listing a cada produto
+        foreach ($products as $product) {
+            $product->ml_listing = $mlListings->get($product->id);
+        }
+
         return view('panel.products.index', compact('products','search'));
     }
 
