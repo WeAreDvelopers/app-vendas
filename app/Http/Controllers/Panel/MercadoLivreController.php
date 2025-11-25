@@ -260,6 +260,12 @@ class MercadoLivreController extends Controller
         // Salva rascunho
         $listingId = $this->mlService->saveDraft($productId, $validated);
 
+        // Verifica se deve publicar após salvar
+        if ($request->has('publish_after_save') && $request->input('publish_after_save') == '1') {
+            // Redireciona para o método publish que usa os dados recém-salvos
+            return redirect()->route('panel.mercado-livre.publish', $productId);
+        }
+
         return back()->with('ok', 'Rascunho salvo com sucesso! Score de qualidade: ' . $validation['percentage'] . '%');
     }
 
@@ -321,7 +327,7 @@ class MercadoLivreController extends Controller
                 }
             }
         }
-dd($payload);
+
         if (!empty($missingRequired)) {
             return back()->with('error', 'Faltam atributos obrigatórios: ' . implode(', ', $missingRequired) . '. Por favor, preencha todos os campos obrigatórios.');
         }

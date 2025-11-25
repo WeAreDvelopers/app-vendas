@@ -419,19 +419,17 @@ document.querySelector('input[name="price"]').addEventListener('input', function
 // Função para publicar
 function publishNow() {
   if (confirm('Deseja publicar este anúncio no Mercado Livre agora?')) {
-    // Cria formulário temporário para POST
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = '{{ route('panel.mercado-livre.publish', $product->id) }}';
+    // Adiciona campo hidden ao formulário para indicar que deve publicar após salvar
+    const mainForm = document.querySelector('form[action*="save-draft"]');
 
-    const csrf = document.createElement('input');
-    csrf.type = 'hidden';
-    csrf.name = '_token';
-    csrf.value = '{{ csrf_token() }}';
-    form.appendChild(csrf);
+    const publishFlag = document.createElement('input');
+    publishFlag.type = 'hidden';
+    publishFlag.name = 'publish_after_save';
+    publishFlag.value = '1';
+    mainForm.appendChild(publishFlag);
 
-    document.body.appendChild(form);
-    form.submit();
+    // Submit do formulário principal (salva rascunho + publica)
+    mainForm.submit();
   }
 }
 
