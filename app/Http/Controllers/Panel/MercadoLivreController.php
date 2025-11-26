@@ -263,8 +263,8 @@ class MercadoLivreController extends Controller
 
         // Verifica se deve publicar após salvar
         if ($request->has('publish_after_save') && $request->input('publish_after_save') == '1') {
-            // Redireciona para o método publish que usa os dados recém-salvos
-            return redirect()->route('panel.mercado-livre.publish', $productId);
+            // Chama o método publish diretamente (não redireciona)
+            return $this->publish($productId);
         }
 
         return back()->with('ok', 'Rascunho salvo com sucesso! Score de qualidade: ' . $validation['percentage'] . '%');
