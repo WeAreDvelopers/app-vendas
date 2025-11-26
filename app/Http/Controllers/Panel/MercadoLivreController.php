@@ -362,4 +362,40 @@ class MercadoLivreController extends Controller
 
         return response()->json($attributes);
     }
+
+    /**
+     * Verifica status da publicação (AJAX)
+     */
+    public function checkPublishStatus(int $productId)
+    {
+        $listing = DB::table('mercado_livre_listings')
+            ->where('product_id', $productId)
+            ->first();
+
+        if (!$listing) {
+            return response()->json([
+                'status' => 'not_found',
+                'message' => 'Listing não encontrado'
+            ]);
+        }
+
+        return response()->json([
+            'status' => $listing->status,
+            'ml_id' => $listing->ml_id ?? null,
+            'published_at' => $listing->published_at ? $listing->published_at : null,
+            'message' => $this->getStatusMessage($listing->status)
+        ]);
+    }
+
+    private function getStatusMessage(string $status): string
+    {
+        return match($status) {
+            'draft' => 'Rascunho salvo',
+            'queued' => 'Na fila para publicação...',
+            'processing' => 'Publicando no Mercado Livre...',
+            'active' => 'Publicado com sucesso!',
+            'failed' => 'Falha ao publicar. Verifique os logs.',
+            default => 'Status desconhecido'
+        };
+    }
 }

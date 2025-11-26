@@ -7,6 +7,52 @@
 <div class="row g-3">
   <!-- Coluna Principal -->
   <div class="col-lg-8">
+    <!-- Status da Publicação -->
+    @if($listing && in_array($listing->status, ['queued', 'processing']))
+    <div class="notion-card mb-3" id="publishStatusCard">
+      <div class="d-flex align-items-center">
+        <div class="spinner-border text-primary me-3" role="status">
+          <span class="visually-hidden">Processando...</span>
+        </div>
+        <div class="flex-grow-1">
+          <h6 class="mb-1" id="statusMessage">
+            @if($listing->status === 'queued')
+              <i class="bi bi-clock-history"></i> Na fila para publicação...
+            @else
+              <i class="bi bi-arrow-repeat"></i> Publicando no Mercado Livre...
+            @endif
+          </h6>
+          <small class="text-muted">A página será atualizada automaticamente quando concluir.</small>
+        </div>
+      </div>
+    </div>
+    @endif
+
+    @if($listing && $listing->status === 'active')
+    <div class="notion-card mb-3 border-success">
+      <div class="alert alert-success mb-0">
+        <i class="bi bi-check-circle-fill"></i>
+        <strong>Publicado com sucesso!</strong>
+        @if($listing->ml_id)
+          <br>ID do Anúncio: <strong>{{ $listing->ml_id }}</strong>
+          <a href="https://produto.mercadolivre.com.br/{{ $listing->ml_id }}" target="_blank" class="btn btn-sm btn-success mt-2">
+            <i class="bi bi-box-arrow-up-right"></i> Ver no Mercado Livre
+          </a>
+        @endif
+      </div>
+    </div>
+    @endif
+
+    @if($listing && $listing->status === 'failed')
+    <div class="notion-card mb-3 border-danger">
+      <div class="alert alert-danger mb-0">
+        <i class="bi bi-x-circle-fill"></i>
+        <strong>Falha ao publicar!</strong>
+        <p class="mb-0 mt-2">Ocorreu um erro durante a publicação. Por favor, revise as informações e tente novamente.</p>
+      </div>
+    </div>
+    @endif
+
     <!-- Score de Qualidade -->
     <div class="notion-card mb-3">
       <div class="d-flex justify-content-between align-items-center mb-3">
@@ -640,5 +686,47 @@ window.addEventListener('load', function() {
     categorySelect.dispatchEvent(new Event('change'));
   }
 });
+
+// Auto-refresh do status de publicação
+@if($listing && in_array($listing->status, ['queued', 'processing']))
+let statusCheckInterval = null;
+
+function checkPublishStatus() {
+  fetch('{{ route("panel.mercado-livre.publish-status", $product->id) }}')
+    .then(response => response.json())
+    .then(data => {
+      console.log('Status:', data);
+
+      // Atualiza mensagem
+      const statusMessage = document.getElementById('statusMessage');
+      if (statusMessage && data.message) {
+        const icons = {
+          'queued': '<i class="bi bi-clock-history"></i>',
+          'processing': '<i class="bi bi-arrow-repeat"></i>',
+          'active': '<i class="bi bi-check-circle-fill"></i>',
+          'failed': '<i class="bi bi-x-circle-fill"></i>'
+        };
+        statusMessage.innerHTML = (icons[data.status] || '') + ' ' + data.message;
+      }
+
+      // Se status mudou para active ou failed, recarrega a página
+      if (data.status === 'active' || data.status === 'failed') {
+        clearInterval(statusCheckInterval);
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      }
+    })
+    .catch(error => {
+      console.error('Erro ao verificar status:', error);
+    });
+}
+
+// Verifica status a cada 3 segundos
+statusCheckInterval = setInterval(checkPublishStatus, 3000);
+
+// Primeira verificação imediata
+checkPublishStatus();
+@endif
 </script>
 @endpush
