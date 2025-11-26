@@ -464,19 +464,34 @@ document.querySelector('input[name="price"]').addEventListener('input', function
 
 // Função para publicar
 function publishNow() {
-  if (confirm('Deseja publicar este anúncio no Mercado Livre agora?')) {
-    // Adiciona campo hidden ao formulário para indicar que deve publicar após salvar
-    const mainForm = document.querySelector('form[action*="save-draft"]');
+  if (!confirm('Deseja publicar este anúncio no Mercado Livre agora?')) {
+    return;
+  }
 
-    const publishFlag = document.createElement('input');
+  // Busca o formulário
+  const mainForm = document.querySelector('form[method="POST"]');
+
+  if (!mainForm) {
+    console.error('Formulário não encontrado');
+    alert('Erro: Formulário não encontrado. Por favor, recarregue a página.');
+    return;
+  }
+
+  // Verifica se já existe o campo para evitar duplicação
+  let publishFlag = mainForm.querySelector('input[name="publish_after_save"]');
+
+  if (!publishFlag) {
+    publishFlag = document.createElement('input');
     publishFlag.type = 'hidden';
     publishFlag.name = 'publish_after_save';
     publishFlag.value = '1';
     mainForm.appendChild(publishFlag);
-
-    // Submit do formulário principal (salva rascunho + publica)
-    mainForm.submit();
+  } else {
+    publishFlag.value = '1';
   }
+
+  // Submit do formulário principal (salva rascunho + publica)
+  mainForm.submit();
 }
 
 // Carrega atributos da categoria quando selecionada
