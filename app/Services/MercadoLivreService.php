@@ -414,15 +414,39 @@ class MercadoLivreService
                 ? json_decode($listingData['attributes'], true)
                 : $listingData['attributes'];
 
+            \Log::info('Processando atributos customizados no payload', [
+                'custom_attributes_raw' => $listingData['attributes'],
+                'custom_attributes_decoded' => $customAttributes,
+                'is_array' => is_array($customAttributes),
+                'count' => is_array($customAttributes) ? count($customAttributes) : 0
+            ]);
+
             if (is_array($customAttributes)) {
+                $beforeMerge = count($attributes);
+                $merged = 0;
+                $skipped = 0;
+
                 // Mescla atributos customizados, evitando duplicatas
                 foreach ($customAttributes as $attr) {
-                    if (isset($attr['id']) && isset($attr['value_name'])) {
+                    if (isset($attr['id']) && (isset($attr['value_name']) || isset($attr['value_id']))) {
                         // Remove atributo existente com mesmo ID se houver
                         $attributes = array_filter($attributes, fn($a) => $a['id'] !== $attr['id']);
                         $attributes[] = $attr;
+                        $merged++;
+                    } else {
+                        $skipped++;
                     }
                 }
+                // Reindexa o array UMA VEZ após todas as modificações
+                $attributes = array_values($attributes);
+
+                \Log::info('Resultado da mesclagem de atributos', [
+                    'before_merge' => $beforeMerge,
+                    'after_merge' => count($attributes),
+                    'merged' => $merged,
+                    'skipped' => $skipped,
+                    'final_attributes' => $attributes
+                ]);
             }
         }
 
@@ -578,6 +602,15 @@ class MercadoLivreService
             ->where('product_id', $productId)
             ->first();
 
+        // Garante que attributes está em formato JSON string (não double-encode)
+        $attributes = $data['attributes'] ?? [];
+        if (is_array($attributes)) {
+            $attributes = json_encode($attributes);
+        } elseif (!is_string($attributes)) {
+            $attributes = json_encode([]);
+        }
+        // Se já é string, mantém como está (já foi encoded)
+
         $listingData = [
             'product_id' => $productId,
             'title' => $data['title'] ?? '',
@@ -589,7 +622,7 @@ class MercadoLivreService
             'listing_type_id' => $data['listing_type_id'] ?? 'gold_special',
             'plain_text_description' => $data['plain_text_description'] ?? null,
             'video_id' => $data['video_id'] ?? null,
-            'attributes' => json_encode($data['attributes'] ?? []),
+            'attributes' => $attributes,
             'shipping_mode' => $data['shipping_mode'] ?? 'me2',
             'free_shipping' => $data['free_shipping'] ?? false,
             'shipping_local_pick_up' => $data['shipping_local_pick_up'] ?? 'true',

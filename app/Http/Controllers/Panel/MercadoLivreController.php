@@ -187,10 +187,12 @@ class MercadoLivreController extends Controller
      */
     public function saveDraft(Request $request, int $productId)
     {
+       
         $product = DB::table('products')->find($productId);
         abort_unless($product, 404);
 
-        $validated = $request->validate([
+        try {
+            $validated = $request->validate([
             'title' => 'nullable|string|max:60',
             'category_id' => 'required|string|max:20',
             'price' => 'required|numeric|min:0.01',
@@ -200,18 +202,22 @@ class MercadoLivreController extends Controller
             'plain_text_description' => 'nullable|string',
             'video_id' => 'nullable|string|max:20',
             'shipping_mode' => 'required|in:me2,custom',
-            'free_shipping' => 'boolean',
+            'free_shipping' => 'nullable|boolean',
             'shipping_local_pick_up' => 'required|in:true,false',
             'warranty_type' => 'nullable|string|max:50',
             'warranty_time' => 'nullable|string|max:50',
             'ml_attr' => 'nullable|array',
             'ml_attr.*' => 'nullable|string',
+            'publish_after_save' => 'nullable|string',
         ]);
 
         // Usa título do produto se não informado
         if (empty($validated['title'])) {
             $validated['title'] = mb_substr($product->name, 0, 60);
         }
+
+        // Define valores padrão para campos opcionais
+        $validated['free_shipping'] = $validated['free_shipping'] ?? false;
 
         // Processa atributos customizados da categoria
         $customAttributes = [];
@@ -258,16 +264,30 @@ class MercadoLivreController extends Controller
         $validated['missing_fields'] = $validation['missing_fields'];
         $validated['validation_errors'] = $validation['errors'];
 
-        // Salva rascunho
-        $listingId = $this->mlService->saveDraft($productId, $validated);
+            // Salva rascunho
+            $listingId = $this->mlService->saveDraft($productId, $validated);
 
-        // Verifica se deve publicar após salvar
-        if ($request->has('publish_after_save') && $request->input('publish_after_save') == '1') {
-            // Chama o método publish diretamente (não redireciona)
-            return $this->publish($productId);
+            // Verifica se deve publicar após salvar
+            if ($request->has('publish_after_save') && $request->input('publish_after_save') == '1') {
+                // Chama o método publish diretamente (não redireciona)
+                return $this->publish($productId);
+            }
+
+            return back()->with('ok', 'Rascunho salvo com sucesso! Score de qualidade: ' . $validation['percentage'] . '%');
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            \Log::error('Erro de validação no saveDraft', [
+                'product_id' => $productId,
+                'errors' => $e->errors()
+            ]);
+            return back()->withErrors($e->errors())->withInput();
+        } catch (\Exception $e) {
+            \Log::error('Erro ao salvar rascunho', [
+                'product_id' => $productId,
+                'error' => $e->getMessage()
+            ]);
+            return back()->with('error', 'Erro ao salvar: ' . $e->getMessage());
         }
-
-        return back()->with('ok', 'Rascunho salvo com sucesso! Score de qualidade: ' . $validation['percentage'] . '%');
     }
 
     /**
@@ -361,6 +381,201 @@ class MercadoLivreController extends Controller
         $attributes = $this->mlService->getCategoryAttributes($categoryId);
 
         return response()->json($attributes);
+    }
+
+    /**
+     * Salva rascunho e publica via AJAX
+     */
+    public function saveDraftAndPublish(Request $request, int $productId)
+    {
+      
+        // try {
+            // Primeiro salva o rascunho
+            $product = DB::table('products')->find($productId);
+            if (!$product) {
+                return response()->json(['error' => 'Produto não encontrado'], 404);
+            }
+
+            $validated = $request->validate([
+                'title' => 'nullable|string|max:60',
+                'category_id' => 'required|string|max:20',
+                'price' => 'required|numeric|min:0.01',
+                'available_quantity' => 'required|integer|min:1',
+                'condition' => 'required|in:new,used',
+                'listing_type_id' => 'required|in:gold_special,gold_pro,free',
+                'plain_text_description' => 'nullable|string',
+                'video_id' => 'nullable|string|max:20',
+                'shipping_mode' => 'required|in:me2,custom',
+                'free_shipping' => 'nullable|boolean',
+                'shipping_local_pick_up' => 'required|in:true,false',
+                'warranty_type' => 'nullable|string|max:50',
+                'warranty_time' => 'nullable|string|max:50',
+                'ml_attr' => 'nullable|array',
+                'ml_attr.*' => 'nullable|string',
+            ]);
+
+            // Usa título do produto se não informado
+            if (empty($validated['title'])) {
+                $validated['title'] = mb_substr($product->name, 0, 60);
+            }
+
+            // Define valores padrão para campos opcionais
+            $validated['free_shipping'] = $validated['free_shipping'] ?? false;
+
+            // Processa atributos customizados da categoria
+            $customAttributes = [];
+            if (!empty($validated['ml_attr'])) {
+                foreach ($validated['ml_attr'] as $attrId => $attrValue) {
+                    if (!empty($attrValue)) {
+                        $attribute = ['id' => $attrId];
+
+                        // Se o valor contém "|", separa em ID e nome
+                        if (strpos($attrValue, '|') !== false) {
+                            [$valueId, $valueName] = explode('|', $attrValue, 2);
+                            $attribute['value_id']   = $valueId;
+                            $attribute['value_name'] = $valueName;
+                        } else {
+                            $attribute['value_name'] = $attrValue;
+                        }
+
+                        $customAttributes[] = $attribute;
+                    }
+                }
+            }
+
+            $validated['attributes'] = json_encode($customAttributes);
+
+            // Debug: Log dos atributos processados do formulário
+            \Log::info('Atributos processados do formulário', [
+                'ml_attr_count' => count($validated['ml_attr'] ?? []),
+                'custom_attributes_count' => count($customAttributes),
+                'custom_attributes' => $customAttributes,
+                'json_encoded' => $validated['attributes']
+            ]);
+
+            // Busca imagens para validação
+            $images = DB::table('product_images')
+                ->where('product_id', $productId)
+                ->orderBy('sort')
+                ->get();
+
+            // Cria objeto de produto com os dados do formulário para validação
+            $productForValidation = clone $product;
+            $productForValidation->name = $validated['title'] ?? $product->name;
+            $productForValidation->price = $validated['price'];
+            $productForValidation->stock = $validated['available_quantity'];
+            $productForValidation->description = $validated['plain_text_description'] ?? $product->description;
+
+            // Revalida com os novos dados
+            $validation = $this->mlService->validateProduct($productForValidation, $images);
+
+            $validated['quality_score'] = $validation['percentage'];
+            $validated['missing_fields'] = $validation['missing_fields'];
+            $validated['validation_errors'] = $validation['errors'];
+
+            // Salva rascunho
+            $listingId = $this->mlService->saveDraft($productId, $validated);
+
+            // Agora inicia o processo de publicação
+            $listing = DB::table('mercado_livre_listings')
+                ->where('product_id', $productId)
+                ->first();
+
+            if (!$listing) {
+                return response()->json(['error' => 'Rascunho não encontrado'], 404);
+            }
+
+            // Valida antes de publicar
+            if (!$validation['can_publish']) {
+                return response()->json([
+                    'error' => 'Não é possível publicar',
+                    'errors' => $validation['errors']
+                ], 422);
+            }
+
+            // Verifica token ML
+            $token = $this->mlService->getActiveToken(auth()->id());
+            if (!$token) {
+                return response()->json(['error' => 'Token do Mercado Livre não encontrado'], 401);
+            }
+
+            // Verifica atributos obrigatórios
+            $listingData = (array) $listing;
+
+            // Debug: Log dos atributos salvos
+            \Log::info('Atributos salvos no listing', [
+                'raw' => $listingData['attributes'] ?? null,
+                'decoded' => json_decode($listingData['attributes'] ?? '[]', true)
+            ]);
+
+            $payload = $this->mlService->prepareListingPayload($product, $listingData, $images);
+
+            // Debug: Log do payload montado
+            \Log::info('Payload montado', [
+                'attributes_count' => count($payload['attributes'] ?? []),
+                'attributes' => $payload['attributes'] ?? []
+            ]);
+
+            $categoryAttrs = $this->mlService->getCategoryAttributes($listing->category_id);
+            $missingRequired = [];
+
+            if (!empty($categoryAttrs['required'])) {
+                $currentAttrIds = array_column($payload['attributes'], 'id');
+
+                // Debug: Log da verificação
+                \Log::info('Verificação de atributos obrigatórios', [
+                    'required_attrs' => array_column($categoryAttrs['required'], 'id'),
+                    'current_attrs' => $currentAttrIds,
+                    'required_count' => count($categoryAttrs['required']),
+                    'current_count' => count($currentAttrIds)
+                ]);
+
+                foreach ($categoryAttrs['required'] as $requiredAttr) {
+                    if (!in_array($requiredAttr['id'], $currentAttrIds)) {
+                        $missingRequired[] = $requiredAttr['name'] . ' (' . $requiredAttr['id'] . ')';
+                    }
+                }
+            }
+
+            if (!empty($missingRequired)) {
+                return response()->json([
+                    'error' => 'Faltam atributos obrigatórios',
+                    'missing' => $missingRequired
+                ], 422);
+            }
+
+            // Atualiza status para 'queued'
+            DB::table('mercado_livre_listings')
+                ->where('id', $listing->id)
+                ->update([
+                    'status' => 'queued',
+                    'updated_at' => now()
+                ]);
+
+            // Despacha Job para a fila
+            PublishListingToML::dispatch($productId, auth()->id())
+                ->onQueue('mercado-livre');
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Anúncio enviado para publicação!',
+                'status' => 'queued'
+            ]);
+
+        // } catch (\Illuminate\Validation\ValidationException $e) {
+        //     return response()->json([
+        //         'error' => 'Erro de validação',
+        //         'errors' => $e->errors()
+        //     ], 422);
+        // } catch (\Exception $e) {
+        //     \Log::error('Erro ao salvar e publicar', [
+        //         'product_id' => $productId,
+        //         'error' => $e->getMessage()
+        //     ]);
+        //     return response()->json([
+        //         'error' => 'Erro ao processar: ' . $e->getMessage()
+        //     ], 500);
+        // }
     }
 
     /**

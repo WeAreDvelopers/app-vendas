@@ -7,6 +7,9 @@
 <div class="row g-3">
   <!-- Coluna Principal -->
   <div class="col-lg-8">
+    <!-- Container para mensagens dinâmicas -->
+    <div id="dynamicMessages"></div>
+
     <!-- Status da Publicação -->
     @if($listing && in_array($listing->status, ['queued', 'processing']))
     <div class="notion-card mb-3" id="publishStatusCard">
@@ -119,7 +122,7 @@
     </div>
 
     <!-- Formulário de Configuração -->
-    <form method="POST" action="{{ route('panel.mercado-livre.save-draft', $product->id) }}">
+    <form method="POST" action="{{ route('panel.mercado-livre.save-draft', $product->id) }}" id="form">
       @csrf
 
       <!-- Informações Básicas -->
@@ -462,14 +465,14 @@ document.querySelector('input[name="price"]').addEventListener('input', function
   document.getElementById('previewPrice').textContent = formatted;
 });
 
-// Função para publicar
+// Função para publicar via AJAX
 function publishNow() {
   if (!confirm('Deseja publicar este anúncio no Mercado Livre agora?')) {
     return;
   }
 
   // Busca o formulário
-  const mainForm = document.querySelector('form[method="POST"]');
+  const mainForm = document.getElementById("form");
 
   if (!mainForm) {
     console.error('Formulário não encontrado');
@@ -477,21 +480,182 @@ function publishNow() {
     return;
   }
 
-  // Verifica se já existe o campo para evitar duplicação
-  let publishFlag = mainForm.querySelector('input[name="publish_after_save"]');
+  // Serializa todos os dados do formulário
+  const formData = new FormData(mainForm);
 
-  if (!publishFlag) {
-    publishFlag = document.createElement('input');
-    publishFlag.type = 'hidden';
-    publishFlag.name = 'publish_after_save';
-    publishFlag.value = '1';
-    mainForm.appendChild(publishFlag);
-  } else {
-    publishFlag.value = '1';
+  // IMPORTANTE: Garante que todos os campos ml_attr sejam incluídos
+  // Busca todos os inputs e selects com name começando com ml_attr DENTRO do formulário
+  const mlAttrInputs = mainForm.querySelectorAll('input[name^="ml_attr["], select[name^="ml_attr["]');
+
+  console.log(`Encontrados ${mlAttrInputs.length} campos de atributos ML`);
+
+  mlAttrInputs.forEach(input => {
+    const fieldName = input.name;
+    const fieldValue = input.value;
+
+    console.log(`Campo: ${fieldName} = "${fieldValue}" (tipo: ${input.type || input.tagName})`);
+
+    // Se o campo tem valor E ainda não está no FormData, adiciona
+    if (fieldValue && fieldValue.trim() !== '') {
+      // Garante que o campo está no FormData
+      if (!formData.has(fieldName)) {
+        formData.append(fieldName, fieldValue);
+        console.log(`✓ Adicionado: ${fieldName}`);
+      } else {
+        console.log(`✓ Já existe: ${fieldName}`);
+      }
+    } else {
+      console.log(`✗ Ignorado (vazio): ${fieldName}`);
+    }
+  });
+
+  // Debug: mostra TODOS os dados que serão enviados
+  console.log('\n=== DADOS COMPLETOS DO FORMULÁRIO ===');
+  const formDataObject = {};
+  for (let [key, value] of formData.entries()) {
+    console.log(`${key}: ${value}`);
+    formDataObject[key] = value;
+  }
+  console.log('\nObjeto completo:', formDataObject);
+  console.log('=====================================\n');
+
+  // Mostra loading
+  const publishBtn = document.querySelector('button[onclick="publishNow()"]');
+  const originalBtnText = publishBtn ? publishBtn.innerHTML : '';
+  if (publishBtn) {
+    publishBtn.disabled = true;
+    publishBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Publicando...';
   }
 
-  // Submit do formulário principal (salva rascunho + publica)
-  mainForm.submit();
+  // Envia via AJAX
+  fetch('{{ route("panel.mercado-livre.save-and-publish", $product->id) }}', {
+    method: 'POST',
+    body: formData,
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest',
+      'Accept': 'application/json'
+    }
+  })
+  .then(response => {
+    if (!response.ok) {
+      return response.json().then(data => {
+        // Cria objeto com erro e dados para tratamento
+        const errorObj = new Error(data.error || 'Erro ao publicar');
+        errorObj.response = data;
+        throw errorObj;
+      });
+    }
+    return response.json();
+  })
+  .then(data => {
+    console.log('Sucesso:', data);
+
+    // Mostra mensagem de sucesso
+    alert(data.message || 'Anúncio enviado para publicação com sucesso!');
+
+    // Recarrega a página para mostrar o card de status
+    window.location.reload();
+  })
+  .catch(error => {
+    console.error('Erro completo:', error);
+
+    // Verifica se há erros de validação detalhados
+    if (error.response && error.response.errors) {
+      showValidationErrors(error.response.errors);
+    } else if (error.response && error.response.missing) {
+      // Atributos obrigatórios faltando
+      showMissingAttributesError(error.response.missing);
+    } else {
+      // Erro genérico
+      showErrorAlert(error.message || 'Erro ao publicar');
+    }
+
+    // Restaura botão
+    if (publishBtn) {
+      publishBtn.disabled = false;
+      publishBtn.innerHTML = originalBtnText;
+    }
+  });
+}
+
+// Função para mostrar erros de validação
+function showValidationErrors(errors) {
+  let errorHtml = '<div class="notion-card mb-3 border-danger">';
+  errorHtml += '<div class="alert alert-danger mb-0">';
+  errorHtml += '<h6 class="alert-heading"><i class="bi bi-exclamation-triangle-fill"></i> Erros de Validação</h6>';
+  errorHtml += '<p class="mb-2">Por favor, corrija os seguintes campos:</p>';
+  errorHtml += '<ul class="mb-0">';
+
+  Object.keys(errors).forEach(field => {
+    const fieldErrors = errors[field];
+    const fieldName = formatFieldName(field);
+    fieldErrors.forEach(err => {
+      errorHtml += `<li><strong>${fieldName}:</strong> ${err}</li>`;
+    });
+  });
+
+  errorHtml += '</ul></div></div>';
+
+  const messagesContainer = document.getElementById('dynamicMessages');
+  if (messagesContainer) {
+    messagesContainer.innerHTML = errorHtml;
+    messagesContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+// Função para mostrar erro de atributos obrigatórios
+function showMissingAttributesError(missing) {
+  let errorHtml = '<div class="notion-card mb-3 border-warning">';
+  errorHtml += '<div class="alert alert-warning mb-0">';
+  errorHtml += '<h6 class="alert-heading"><i class="bi bi-exclamation-circle-fill"></i> Atributos Obrigatórios Faltando</h6>';
+  errorHtml += '<p class="mb-2">Os seguintes atributos da categoria são obrigatórios:</p>';
+  errorHtml += '<ul class="mb-0">';
+
+  missing.forEach(attr => {
+    errorHtml += `<li>${attr}</li>`;
+  });
+
+  errorHtml += '</ul></div></div>';
+
+  const messagesContainer = document.getElementById('dynamicMessages');
+  if (messagesContainer) {
+    messagesContainer.innerHTML = errorHtml;
+    messagesContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+// Função para mostrar erro genérico
+function showErrorAlert(message) {
+  let errorHtml = '<div class="notion-card mb-3 border-danger">';
+  errorHtml += '<div class="alert alert-danger mb-0">';
+  errorHtml += `<i class="bi bi-x-circle-fill"></i> <strong>Erro:</strong> ${message}`;
+  errorHtml += '</div></div>';
+
+  const messagesContainer = document.getElementById('dynamicMessages');
+  if (messagesContainer) {
+    messagesContainer.innerHTML = errorHtml;
+    messagesContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+// Função auxiliar para formatar nomes de campos
+function formatFieldName(field) {
+  const fieldNames = {
+    'category_id': 'Categoria',
+    'price': 'Preço',
+    'available_quantity': 'Quantidade Disponível',
+    'condition': 'Condição',
+    'listing_type_id': 'Tipo de Anúncio',
+    'shipping_mode': 'Modo de Envio',
+    'shipping_local_pick_up': 'Retirada Local',
+    'title': 'Título',
+    'plain_text_description': 'Descrição',
+    'video_id': 'ID do Vídeo',
+    'warranty_type': 'Tipo de Garantia',
+    'warranty_time': 'Tempo de Garantia'
+  };
+
+  return fieldNames[field] || field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
 
 // Carrega atributos da categoria quando selecionada

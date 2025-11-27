@@ -65,6 +65,7 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::get('/mercado-livre/{productId}/prepare', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'prepare'])->name('mercado-livre.prepare');
     Route::post('/mercado-livre/{productId}/draft', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'saveDraft'])->name('mercado-livre.save-draft');
     Route::post('/mercado-livre/{productId}/publish', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'publish'])->name('mercado-livre.publish');
+    Route::post('/mercado-livre/{productId}/save-and-publish', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'saveDraftAndPublish'])->name('mercado-livre.save-and-publish');
     Route::get('/mercado-livre/{productId}/publish-status', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'checkPublishStatus'])->name('mercado-livre.publish-status');
     Route::get('/mercado-livre/category-attributes', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'getCategoryAttributes'])->name('mercado-livre.category-attributes');
 
