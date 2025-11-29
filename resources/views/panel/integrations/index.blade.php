@@ -91,6 +91,87 @@
     </div>
   </div>
 
+  <!-- Google Drive -->
+  <div class="col-md-6">
+    <div class="notion-card h-100">
+      <div class="d-flex align-items-center mb-3">
+        <div class="me-3" style="font-size: 2.5rem;">☁️</div>
+        <div class="flex-grow-1">
+          <h5 class="mb-0">Google Drive</h5>
+          <small class="text-muted">Armazenamento e imagens de produtos</small>
+        </div>
+        @if($driveConnected)
+          <span class="badge bg-success">Conectado</span>
+        @else
+          <span class="badge bg-secondary">Desconectado</span>
+        @endif
+      </div>
+
+      @if($driveConnected)
+        <div class="alert alert-success mb-3">
+          <div class="d-flex align-items-center">
+            <i class="bi bi-check-circle-fill me-2"></i>
+            <div class="flex-grow-1">
+              <strong>Conta conectada:</strong> {{ $driveIntegration->credentials['email'] ?? 'Usuário Google' }}
+              <br>
+              <small class="text-muted">
+                Conectado em {{ $driveIntegration->connected_at->format('d/m/Y H:i') }}
+              </small>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex gap-2">
+          <form method="POST" action="{{ route('panel.integrations.drive.disconnect') }}" class="d-inline">
+            @csrf
+            <button type="submit" class="btn btn-outline-danger btn-sm"
+                    onclick="return confirm('Tem certeza que deseja desconectar o Google Drive?')">
+              <i class="bi bi-plug"></i> Desconectar
+            </button>
+          </form>
+
+          <a href="{{ route('panel.integrations.drive.connect') }}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-arrow-repeat"></i> Reconectar
+          </a>
+        </div>
+
+        <hr class="my-3">
+
+        <div class="small">
+          <div class="mb-2">
+            <strong>Funcionalidades disponíveis:</strong>
+          </div>
+          <ul class="mb-0">
+            <li>✅ Selecionar imagens do Drive para produtos</li>
+            <li>✅ Acesso seguro aos arquivos</li>
+            <li>✅ Organização centralizada</li>
+          </ul>
+        </div>
+      @else
+        <p class="text-muted mb-3">
+          Conecte sua conta do Google Drive para selecionar imagens diretamente do seu armazenamento na nuvem.
+        </p>
+
+        <a href="{{ route('panel.integrations.drive.connect') }}" class="btn btn-primary">
+          <i class="bi bi-link-45deg"></i> Conectar Google Drive
+        </a>
+
+        <hr class="my-3">
+
+        <div class="small">
+          <div class="mb-2">
+            <strong>O que você poderá fazer:</strong>
+          </div>
+          <ul class="mb-0">
+            <li>Escolher imagens do Drive para seus produtos</li>
+            <li>Organizar fotos em pastas</li>
+            <li>Acesso rápido e seguro aos arquivos</li>
+          </ul>
+        </div>
+      @endif
+    </div>
+  </div>
+
   <!-- Shopee (Em breve) -->
   <div class="col-md-6">
     <div class="notion-card h-100 opacity-50">

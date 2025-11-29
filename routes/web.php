@@ -36,10 +36,17 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
 
     // Integrations
     Route::get('/integrations', [\App\Http\Controllers\Panel\IntegrationController::class, 'index'])->name('integrations.index');
+
+    // Mercado Livre Integration
     Route::get('/integrations/mercado-livre/connect', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreConnect'])->name('integrations.ml.connect');
     Route::get('/integrations/mercado-livre/callback', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreCallback'])->name('integrations.ml.callback');
     Route::post('/integrations/mercado-livre/disconnect', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreDisconnect'])->name('integrations.ml.disconnect');
     Route::post('/integrations/mercado-livre/reconnect', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreReconnect'])->name('integrations.ml.reconnect');
+
+    // Google Drive Integration
+    Route::get('/integrations/google-drive/connect', [\App\Http\Controllers\Panel\IntegrationController::class, 'googleDriveConnect'])->name('integrations.drive.connect');
+    Route::get('/integrations/google-drive/callback', [\App\Http\Controllers\Panel\IntegrationController::class, 'googleDriveCallback'])->name('integrations.drive.callback');
+    Route::post('/integrations/google-drive/disconnect', [\App\Http\Controllers\Panel\IntegrationController::class, 'googleDriveDisconnect'])->name('integrations.drive.disconnect');
 
     // Suppliers
     Route::resource('suppliers', SupplierController::class);
@@ -66,6 +73,7 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::post('/products/{id}/images', [ProductUIController::class, 'uploadImages'])->name('products.images.upload');
     Route::post('/products/{id}/images/search', [ProductUIController::class, 'searchImages'])->name('products.images.search');
     Route::post('/products/{id}/images/download', [ProductUIController::class, 'downloadSelectedImages'])->name('products.images.download');
+    Route::post('/products/{id}/images/drive/download', [ProductUIController::class, 'downloadDriveImages'])->name('products.images.drive.download');
     Route::delete('/products/{id}/images/{imageId}', [ProductUIController::class, 'deleteImage'])->name('products.images.delete');
     Route::delete('/products/{id}/images', [ProductUIController::class, 'deleteAllImages'])->name('products.images.deleteAll');
     Route::post('/products/{id}/reference-image', [ProductUIController::class, 'uploadReferenceImage'])->name('products.reference-image.upload');

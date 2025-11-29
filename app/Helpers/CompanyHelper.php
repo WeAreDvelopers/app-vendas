@@ -140,4 +140,76 @@ class CompanyHelper
 
         return auth()->user()->isAdminOf($companyId);
     }
+
+    /**
+     * Obtém a integração do Google Drive da empresa atual
+     */
+    public static function googleDriveIntegration(): ?CompanyIntegration
+    {
+        $company = self::currentCompany();
+
+        if (!$company) {
+            return null;
+        }
+
+        return $company->integrations()
+            ->where('integration_type', 'google_drive')
+            ->first();
+    }
+
+    /**
+     * Verifica se o Google Drive está conectado
+     */
+    public static function isGoogleDriveConnected(): bool
+    {
+        $integration = self::googleDriveIntegration();
+
+        return $integration && $integration->isConnected();
+    }
+
+    /**
+     * Obtém o access token do Google Drive
+     * Atualiza automaticamente se estiver expirado
+     */
+    public static function getGoogleDriveAccessToken(): ?string
+    {
+        $integration = self::googleDriveIntegration();
+
+        if (!$integration) {
+            return null;
+        }
+
+        // Se está expirado ou prestes a expirar (menos de 5 minutos), renova
+        if ($integration->isExpired() ||
+            ($integration->expires_at && $integration->expires_at->isBefore(now()->addMinutes(5)))) {
+
+            $controller = app(\App\Http\Controllers\Panel\IntegrationController::class);
+            $renewed = $controller->googleDriveRefreshToken($integration);
+
+            if (!$renewed) {
+                return null;
+            }
+
+            // Recarrega a integração
+            $integration = $integration->fresh();
+        }
+
+        $credentials = $integration->getDecryptedCredentials();
+
+        return $credentials['access_token'] ?? null;
+    }
+
+    /**
+     * Obtém credenciais completas do Google Drive
+     */
+    public static function getGoogleDriveCredentials(): ?array
+    {
+        $integration = self::googleDriveIntegration();
+
+        if (!$integration) {
+            return null;
+        }
+
+        return $integration->getDecryptedCredentials();
+    }
 }

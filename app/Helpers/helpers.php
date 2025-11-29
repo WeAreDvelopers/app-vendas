@@ -84,3 +84,34 @@ if (!function_exists('isCompanyAdmin')) {
         return CompanyHelper::isCurrentCompanyAdmin();
     }
 }
+
+if (!function_exists('driveIntegration')) {
+    /**
+     * Obtém a integração do Google Drive da empresa atual
+     */
+    function driveIntegration(): ?CompanyIntegration
+    {
+        return CompanyHelper::googleDriveIntegration();
+    }
+}
+
+if (!function_exists('driveConnected')) {
+    /**
+     * Verifica se o Google Drive está conectado
+     */
+    function driveConnected(): bool
+    {
+        return CompanyHelper::isGoogleDriveConnected();
+    }
+}
+
+if (!function_exists('driveAccessToken')) {
+    /**
+     * Obtém o access token do Google Drive
+     * Renova automaticamente se necessário
+     */
+    function driveAccessToken(): ?string
+    {
+        return CompanyHelper::getGoogleDriveAccessToken();
+    }
+}

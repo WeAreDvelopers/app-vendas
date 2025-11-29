@@ -5,6 +5,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Http;
 use App\Services\ImageSearchService;
 use App\Services\ImageProcessingService;
 use App\Services\AIDescriptionService;
@@ -549,6 +550,124 @@ class ProductUIController extends Controller {
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao gerar descrição: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Download de imagens do Google Drive
+     */
+    public function downloadDriveImages(Request $request, $id)
+    {
+        try {
+            $fileIds = $request->input('file_ids', []);
+
+            if (empty($fileIds)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Nenhum arquivo selecionado'
+                ], 400);
+            }
+
+            // Verifica se Google Drive está conectado
+            if (!driveConnected()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Google Drive não está conectado'
+                ], 400);
+            }
+
+            $accessToken = driveAccessToken();
+
+            if (!$accessToken) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Não foi possível obter o token de acesso do Google Drive'
+                ], 400);
+            }
+
+            $product = DB::table('products')->find($id);
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Produto não encontrado'
+                ], 404);
+            }
+
+            // Pega a ordem atual (maior sort + 1)
+            $maxSort = DB::table('product_images')
+                ->where('product_id', $id)
+                ->max('sort') ?? 0;
+
+            $downloadedCount = 0;
+
+            foreach ($fileIds as $index => $fileId) {
+                try {
+                    // Faz download do arquivo do Google Drive
+                    $response = Http::withHeaders([
+                        'Authorization' => 'Bearer ' . $accessToken
+                    ])->get("https://www.googleapis.com/drive/v3/files/{$fileId}?alt=media");
+
+                    if (!$response->successful()) {
+                        \Log::warning("Erro ao baixar arquivo {$fileId} do Google Drive: " . $response->body());
+                        continue;
+                    }
+
+                    // Pega metadados do arquivo
+                    $metaResponse = Http::withHeaders([
+                        'Authorization' => 'Bearer ' . $accessToken
+                    ])->get("https://www.googleapis.com/drive/v3/files/{$fileId}?fields=name,mimeType");
+
+                    $metadata = $metaResponse->json();
+                    $originalName = $metadata['name'] ?? 'image.jpg';
+                    $mimeType = $metadata['mimeType'] ?? 'image/jpeg';
+
+                    // Define extensão baseada no mime type
+                    $extension = match($mimeType) {
+                        'image/jpeg' => 'jpg',
+                        'image/png' => 'png',
+                        'image/gif' => 'gif',
+                        'image/webp' => 'webp',
+                        default => 'jpg'
+                    };
+
+                    // Gera nome único
+                    $fileName = uniqid('product_' . $id . '_') . '.' . $extension;
+                    $path = 'products/' . $id;
+
+                    // Salva arquivo
+                    Storage::put($path . '/' . $fileName, $response->body());
+
+                    // Salva no banco
+                    DB::table('product_images')->insert([
+                        'product_id' => $id,
+                        'path' => Storage::url($path . '/' . $fileName),
+                        'sort' => $maxSort + $index + 1,
+                        'created_at' => now(),
+                        'updated_at' => now()
+                    ]);
+
+                    $downloadedCount++;
+
+                } catch (\Exception $e) {
+                    \Log::error("Erro ao processar arquivo {$fileId}: " . $e->getMessage());
+                    continue;
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "{$downloadedCount} imagem(ns) importada(s) do Google Drive",
+                'count' => $downloadedCount
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error("Erro ao baixar imagens do Drive: " . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao processar imagens: ' . $e->getMessage()
             ], 500);
         }
     }
