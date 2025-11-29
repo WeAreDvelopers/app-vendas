@@ -73,6 +73,9 @@
       <div class="btn-group">
         <button type="button" class="btn btn-sm btn-outline-secondary" id="selectAll">Selecionar Todos</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="deselectAll">Desmarcar Todos</button>
+        <button type="button" class="btn btn-sm btn-success" id="convertWithoutAI" disabled>
+          <i class="bi bi-lightning"></i> Converter sem IA
+        </button>
         <button type="button" class="btn btn-sm btn-primary" id="processSelected" disabled>
           <i class="bi bi-magic"></i> Processar com IA
         </button>
@@ -185,11 +188,19 @@ document.getElementById('deselectAll').addEventListener('click', function() {
 // Update process button state
 function updateProcessButton() {
   const selectedCount = document.querySelectorAll('.product-checkbox:checked').length;
-  const btn = document.getElementById('processSelected');
-  btn.disabled = selectedCount === 0;
-  btn.innerHTML = selectedCount > 0
+  const btnProcess = document.getElementById('processSelected');
+  const btnConvert = document.getElementById('convertWithoutAI');
+
+  btnProcess.disabled = selectedCount === 0;
+  btnConvert.disabled = selectedCount === 0;
+
+  btnProcess.innerHTML = selectedCount > 0
     ? `<i class="bi bi-magic"></i> Processar ${selectedCount} produto(s) com IA`
     : '<i class="bi bi-magic"></i> Processar com IA';
+
+  btnConvert.innerHTML = selectedCount > 0
+    ? `<i class="bi bi-lightning"></i> Converter ${selectedCount} produto(s) sem IA`
+    : '<i class="bi bi-lightning"></i> Converter sem IA';
 }
 
 // Listen to individual checkbox changes
@@ -197,11 +208,78 @@ document.querySelectorAll('.product-checkbox').forEach(cb => {
   cb.addEventListener('change', updateProcessButton);
 });
 
-// Process selected products
+// Process selected products with AI
 document.getElementById('processSelected').addEventListener('click', function() {
   if (confirm('Deseja processar os produtos selecionados com IA? Isso irá gerar descrições e buscar imagens.')) {
     document.getElementById('processProductsForm').submit();
   }
+});
+
+// Convert selected products without AI
+document.getElementById('convertWithoutAI').addEventListener('click', function() {
+  const selectedCheckboxes = document.querySelectorAll('.product-checkbox:checked');
+  const selectedCount = selectedCheckboxes.length;
+
+  if (selectedCount === 0) {
+    alert('Selecione pelo menos um produto para converter.');
+    return;
+  }
+
+  if (!confirm(`Deseja converter ${selectedCount} produto(s) diretamente sem processamento de IA?\n\nIsso criará os produtos com descrição básica, sem custo de IA.`)) {
+    return;
+  }
+
+  // Desabilita o botão para evitar cliques múltiplos
+  this.disabled = true;
+  this.innerHTML = '<i class="bi bi-hourglass-split"></i> Convertendo...';
+
+  let processed = 0;
+  let errors = 0;
+  const productIds = Array.from(selectedCheckboxes).map(cb => cb.value);
+
+  // Função para processar cada produto
+  async function convertProduct(productId) {
+    try {
+      const response = await fetch('/import/convert-without-ai', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+        },
+        body: JSON.stringify({
+          product_raw_id: productId
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        console.error('Erro ao converter produto:', data.error || data.message);
+        errors++;
+      } else {
+        processed++;
+      }
+    } catch (error) {
+      console.error('Erro na requisição:', error);
+      errors++;
+    }
+  }
+
+  // Processa todos os produtos em sequência
+  Promise.all(productIds.map(id => convertProduct(id)))
+    .then(() => {
+      if (errors > 0) {
+        alert(`Conversão concluída!\n\n✓ ${processed} produto(s) convertido(s) com sucesso\n✗ ${errors} erro(s)\n\nRecarregando a página...`);
+      } else {
+        alert(`✓ ${processed} produto(s) convertido(s) com sucesso!\n\nRecarregando a página...`);
+      }
+      window.location.reload();
+    })
+    .catch(error => {
+      console.error('Erro geral:', error);
+      alert('Erro ao converter produtos. Verifique o console para mais detalhes.');
+      window.location.reload();
+    });
 });
 </script>
 @endpush

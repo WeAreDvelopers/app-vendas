@@ -10,8 +10,10 @@ use App\Jobs\ImportSupplierFile;
 class ImportUIController extends Controller {
     public function index(Request $r) {
         $search = trim($r->get('q', ''));
+        $companyId = auth()->user()->current_company_id;
 
-        $query = DB::table('supplier_imports');
+        $query = DB::table('supplier_imports')
+            ->where('company_id', $companyId);
 
         if ($search) {
             $query->where(function($q) use ($search) {
@@ -26,7 +28,10 @@ class ImportUIController extends Controller {
               ->paginate(12)
               ->withQueryString();
 
-        $suppliers = \App\Models\Supplier::where('active', true)->orderBy('name')->get();
+        $suppliers = \App\Models\Supplier::where('company_id', $companyId)
+            ->where('active', true)
+            ->orderBy('name')
+            ->get();
 
         return view('panel.imports.index', [
             'imports' => $imports,
@@ -55,6 +60,7 @@ class ImportUIController extends Controller {
         $path = $r->file('file')->store('supplier_imports', 'local');
         $type = strtolower($r->file('file')->getClientOriginalExtension());
         $id = DB::table('supplier_imports')->insertGetId([
+            'company_id'    => auth()->user()->current_company_id,
             'supplier_id'   => $supplierId,
             'supplier_name' => $supplierName,
             'source_file'   => $path,

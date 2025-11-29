@@ -136,8 +136,12 @@ class ProcessProductWithAI implements ShouldQueue
 
     private function saveProcessedProduct(ProductRaw $productRaw, string $description, array $imageUrls): int
     {
+        // Obtém company_id do product_raw via import
+        $import = DB::table('supplier_imports')->find($productRaw->supplier_import_id);
+
         // Salva na tabela de produtos processados prontos para publicação
         $productId = DB::table('products')->insertGetId([
+            'company_id' => $import->company_id,
             'product_raw_id' => $productRaw->id,
             'sku' => $productRaw->sku,
             'ean' => $productRaw->ean,

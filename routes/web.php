@@ -26,6 +26,21 @@ Route::post('/mercado-livre/notifications', [\App\Http\Controllers\Panel\Mercado
 Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
+    // Companies
+    Route::get('/companies', [\App\Http\Controllers\Panel\CompanyController::class, 'index'])->name('companies.index');
+    Route::post('/companies/switch', [\App\Http\Controllers\Panel\CompanyController::class, 'switch'])->name('companies.switch');
+    Route::get('/companies/create', [\App\Http\Controllers\Panel\CompanyController::class, 'create'])->name('companies.create');
+    Route::post('/companies', [\App\Http\Controllers\Panel\CompanyController::class, 'store'])->name('companies.store');
+    Route::get('/companies/{id}/edit', [\App\Http\Controllers\Panel\CompanyController::class, 'edit'])->name('companies.edit');
+    Route::put('/companies/{id}', [\App\Http\Controllers\Panel\CompanyController::class, 'update'])->name('companies.update');
+
+    // Integrations
+    Route::get('/integrations', [\App\Http\Controllers\Panel\IntegrationController::class, 'index'])->name('integrations.index');
+    Route::get('/integrations/mercado-livre/connect', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreConnect'])->name('integrations.ml.connect');
+    Route::get('/integrations/mercado-livre/callback', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreCallback'])->name('integrations.ml.callback');
+    Route::post('/integrations/mercado-livre/disconnect', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreDisconnect'])->name('integrations.ml.disconnect');
+    Route::post('/integrations/mercado-livre/reconnect', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreReconnect'])->name('integrations.ml.reconnect');
+
     // Suppliers
     Route::resource('suppliers', SupplierController::class);
     Route::get('/suppliers/{supplier}/mapping', [SupplierController::class, 'editMapping'])->name('suppliers.mapping');
@@ -83,4 +98,5 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
 });
 
 Route::post('/import/supplier', [ImportController::class,'store']);
+Route::post('/import/convert-without-ai', [ImportController::class,'convertWithoutAI']);
 Route::post('/webhooks/meli',   [WebhookController::class,'meli']); 

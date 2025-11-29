@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>@yield('title', 'Painel')</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
@@ -48,6 +49,8 @@
       <a class="nav-link {{ request()->routeIs('panel.listings.*') ? 'active' : '' }}" href="{{ route('panel.listings.index') }}"><i class="bi bi-megaphone me-2"></i>Publicações</a>
       <a class="nav-link {{ request()->routeIs('panel.orders.*') ? 'active' : '' }}" href="{{ route('panel.orders.index') }}"><i class="bi bi-receipt me-2"></i>Pedidos</a>
       <div class="mt-2 mb-1 small text-uppercase text-muted px-2">Sistema</div>
+      <a class="nav-link {{ request()->routeIs('panel.integrations.*') ? 'active' : '' }}" href="{{ route('panel.integrations.index') }}"><i class="bi bi-plug me-2"></i>Integrações</a>
+      <a class="nav-link {{ request()->routeIs('panel.companies.*') ? 'active' : '' }}" href="{{ route('panel.companies.index') }}"><i class="bi bi-building-gear me-2"></i>Empresas</a>
       <a class="nav-link {{ request()->routeIs('panel.monitor.queues') ? 'active' : '' }}" href="{{ route('panel.monitor.queues') }}"><i class="bi bi-activity me-2"></i>Filas / Monitor</a>
     </nav>
     <div class="mt-auto px-2 pb-2">
@@ -79,6 +82,41 @@
             <input name="q" value="{{ request('q') }}" type="search" class="form-control form-control-sm search-input" placeholder="Buscar...">
           </form>
           <div class="d-flex align-items-center gap-2">
+            <!-- Company Selector -->
+            @if(isset($currentCompany) && auth()->user()->companies->count() > 1)
+            <div class="dropdown">
+              <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" id="companyDropdown" data-bs-toggle="dropdown">
+                <i class="bi bi-building"></i> {{ $currentCompany->name }}
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="companyDropdown">
+                @foreach(auth()->user()->companies as $company)
+                  <li>
+                    <form method="POST" action="{{ route('panel.companies.switch') }}" class="d-inline">
+                      @csrf
+                      <input type="hidden" name="company_id" value="{{ $company->id }}">
+                      <button type="submit" class="dropdown-item {{ $company->id == $currentCompany->id ? 'active' : '' }}">
+                        <i class="bi bi-building me-2"></i>{{ $company->name }}
+                        @if($company->id == $currentCompany->id)
+                          <i class="bi bi-check2 float-end"></i>
+                        @endif
+                      </button>
+                    </form>
+                  </li>
+                @endforeach
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                  <a class="dropdown-item" href="{{ route('panel.companies.index') }}">
+                    <i class="bi bi-gear me-2"></i>Gerenciar Empresas
+                  </a>
+                </li>
+              </ul>
+            </div>
+            @elseif(isset($currentCompany))
+            <span class="chip">
+              <i class="bi bi-building"></i> {{ $currentCompany->name }}
+            </span>
+            @endif
+
             <!-- Notification Bell -->
             <div class="dropdown">
               <button class="btn btn-sm btn-outline-secondary position-relative" type="button" id="notificationDropdown" data-bs-toggle="dropdown" aria-expanded="false">

@@ -14,7 +14,7 @@ class ProductUIController extends Controller {
         $search = trim($r->get('q',''));
 
         // Usa Eloquent ao invés de Query Builder para ter acesso aos relationships
-        $query = \App\Models\Product::query();
+        $query = \App\Models\Product::where('company_id', auth()->user()->current_company_id);
 
         if ($search) {
             $query->where(function($q) use ($search){
