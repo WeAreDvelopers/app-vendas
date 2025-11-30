@@ -132,7 +132,68 @@ class MercadoLivreService
     }
 
     /**
+     * Busca token ativo da tabela company_integrations (novo sistema multi-company)
+     */
+    public function getActiveTokenFromIntegration(int $companyId): ?object
+    {
+        $integration = DB::table('company_integrations')
+            ->where('company_id', $companyId)
+            ->where('integration_type', 'mercado_livre')
+            ->where('active', true)
+            ->first();
+
+        if (!$integration) {
+            return null;
+        }
+
+        // Descriptografa credenciais
+        $credentials = json_decode($integration->credentials, true);
+        if (!$credentials || !isset($credentials['access_token'])) {
+            return null;
+        }
+
+        // Monta objeto compatível com o formato esperado
+        $token = (object) [
+            'id' => $integration->id,
+            'access_token' => $credentials['access_token'],
+            'refresh_token' => $credentials['refresh_token'] ?? null,
+            'ml_user_id' => $credentials['user_id'] ?? null,
+            'expires_at' => $integration->expires_at,
+            'company_id' => $companyId,
+        ];
+
+        // Verifica se o token expirou ou está próximo de expirar (5 min)
+        if (now()->addMinutes(5)->greaterThan($token->expires_at)) {
+            $newTokenData = $this->refreshAccessToken($token->refresh_token, $companyId);
+
+            if ($newTokenData) {
+                // Atualiza token no banco
+                $updatedCredentials = array_merge($credentials, [
+                    'access_token' => $newTokenData['access_token'],
+                    'refresh_token' => $newTokenData['refresh_token'],
+                ]);
+
+                DB::table('company_integrations')
+                    ->where('id', $integration->id)
+                    ->update([
+                        'credentials' => json_encode($updatedCredentials),
+                        'expires_at' => now()->addSeconds($newTokenData['expires_in']),
+                        'updated_at' => now(),
+                    ]);
+
+                // Atualiza objeto local
+                $token->access_token = $newTokenData['access_token'];
+                $token->refresh_token = $newTokenData['refresh_token'];
+                $token->expires_at = now()->addSeconds($newTokenData['expires_in']);
+            }
+        }
+
+        return $token;
+    }
+
+    /**
      * Busca token ativo (renova automaticamente se expirado)
+     * Sistema antigo - busca na tabela mercado_livre_tokens
      */
     public function getActiveToken(?int $userId = null): ?object
     {
@@ -939,7 +1000,13 @@ class MercadoLivreService
      */
     public function syncProductsFromML(int $userId, int $companyId): array
     {
-        $token = $this->getActiveToken($userId);
+        // Tenta buscar token da tabela company_integrations primeiro (novo sistema)
+        $token = $this->getActiveTokenFromIntegration($companyId);
+
+        // Se não encontrar, tenta buscar da tabela mercado_livre_tokens (sistema antigo)
+        if (!$token) {
+            $token = $this->getActiveToken($userId);
+        }
 
         if (!$token) {
             return [
