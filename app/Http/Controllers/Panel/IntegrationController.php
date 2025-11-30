@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\CompanyIntegration;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use App\Helpers\IntegrationSettings;
 
 class IntegrationController extends Controller
 {
@@ -47,11 +48,20 @@ class IntegrationController extends Controller
      */
     public function mercadoLivreConnect(Request $request)
     {
-        $appId = env('ML_APP_ID');
+        $companyId = $request->user()->current_company_id;
+
+        // Busca App ID do banco de dados (ou fallback para .env)
+        $appId = IntegrationSettings::getMercadoLivreAppId($companyId);
+
+        if (!$appId) {
+            return redirect()->route('panel.integrations.index')
+                ->with('error', 'Configure suas credenciais do Mercado Livre antes de conectar. Clique em "Configurar API".');
+        }
+
         $redirectUri = route('panel.integrations.ml.callback');
 
         // Salva company_id na sessão para recuperar no callback
-        session(['ml_oauth_company_id' => $request->user()->current_company_id]);
+        session(['ml_oauth_company_id' => $companyId]);
 
         $authUrl = "https://auth.mercadolivre.com.br/authorization?response_type=code&client_id={$appId}&redirect_uri={$redirectUri}";
 
@@ -70,12 +80,25 @@ class IntegrationController extends Controller
                 ->with('error', 'Erro ao conectar com Mercado Livre: código não fornecido.');
         }
 
+        // Recupera company_id da sessão
+        $companyId = session('ml_oauth_company_id') ?? auth()->user()->current_company_id;
+        session()->forget('ml_oauth_company_id');
+
+        // Busca credenciais do banco de dados
+        $appId = IntegrationSettings::getMercadoLivreAppId($companyId);
+        $secretKey = IntegrationSettings::getMercadoLivreSecretKey($companyId);
+
+        if (!$appId || !$secretKey) {
+            return redirect()->route('panel.integrations.index')
+                ->with('error', 'Credenciais do Mercado Livre não encontradas. Configure-as primeiro.');
+        }
+
         try {
             // Troca code por access_token
             $response = Http::asForm()->post('https://api.mercadolibre.com/oauth/token', [
                 'grant_type' => 'authorization_code',
-                'client_id' => env('ML_APP_ID'),
-                'client_secret' => env('ML_CLIENT_SECRET'),
+                'client_id' => $appId,
+                'client_secret' => $secretKey,
                 'code' => $code,
                 'redirect_uri' => route('panel.integrations.ml.callback')
             ]);
@@ -85,10 +108,6 @@ class IntegrationController extends Controller
             }
 
             $data = $response->json();
-
-            // Recupera company_id da sessão
-            $companyId = session('ml_oauth_company_id') ?? auth()->user()->current_company_id;
-            session()->forget('ml_oauth_company_id');
 
             // Busca dados do usuário do ML
             $userResponse = Http::withHeaders([
@@ -171,10 +190,18 @@ class IntegrationController extends Controller
                 throw new \Exception('Refresh token não encontrado');
             }
 
+            // Busca credenciais do banco de dados
+            $appId = IntegrationSettings::getMercadoLivreAppId($integration->company_id);
+            $secretKey = IntegrationSettings::getMercadoLivreSecretKey($integration->company_id);
+
+            if (!$appId || !$secretKey) {
+                throw new \Exception('Credenciais do Mercado Livre não encontradas');
+            }
+
             $response = Http::asForm()->post('https://api.mercadolibre.com/oauth/token', [
                 'grant_type' => 'refresh_token',
-                'client_id' => env('ML_APP_ID'),
-                'client_secret' => env('ML_CLIENT_SECRET'),
+                'client_id' => $appId,
+                'client_secret' => $secretKey,
                 'refresh_token' => $credentials['refresh_token']
             ]);
 
