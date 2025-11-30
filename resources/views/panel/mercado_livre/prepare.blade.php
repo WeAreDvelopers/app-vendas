@@ -779,7 +779,112 @@ function createAttributeField(attr, required, savedValue) {
   let input;
 
   if (attr.values && attr.values.length > 0) {
-    // Select com opções predefinidas
+    // Tratamento especial para BRAND - permite buscar/digitar
+    if (attr.id === 'BRAND') {
+      const wrapper = document.createElement('div');
+
+      // Select principal
+      input = document.createElement('select');
+      input.className = 'form-select mb-2';
+      input.name = `ml_attr[${attr.id}]`;
+      input.dataset.attrId = attr.id;
+      input.dataset.attrName = attr.name;
+      input.id = 'brand-select';
+
+      const emptyOption = document.createElement('option');
+      emptyOption.value = '';
+      emptyOption.textContent = 'Selecione uma marca...';
+      input.appendChild(emptyOption);
+
+      // Opção para digitar outra marca
+      const otherOption = document.createElement('option');
+      otherOption.value = '__OTHER__';
+      otherOption.textContent = '✏️ Digitar outra marca...';
+      input.appendChild(otherOption);
+
+      // Opção genérica
+      const genericOption = document.createElement('option');
+      genericOption.value = '242916|Genérico';
+      genericOption.textContent = 'Genérico (sem marca)';
+      input.appendChild(genericOption);
+
+      attr.values.forEach(value => {
+        const option = document.createElement('option');
+        option.value = value.id + '|' + value.name;
+        option.textContent = value.name;
+        option.dataset.valueId = value.id;
+        option.dataset.valueName = value.name;
+
+        if (savedValue && (savedValue === value.name || savedValue.startsWith(value.id + '|'))) {
+          option.selected = true;
+        }
+        input.appendChild(option);
+      });
+
+      // Campo para digitar marca customizada (oculto inicialmente)
+      const customInputWrapper = document.createElement('div');
+      customInputWrapper.style.display = 'none';
+      customInputWrapper.id = 'brand-custom-wrapper';
+
+      const customInput = document.createElement('input');
+      customInput.type = 'text';
+      customInput.className = 'form-control';
+      customInput.placeholder = 'Digite o nome da marca';
+      customInput.id = 'brand-custom-input';
+      customInput.list = 'brand-suggestions';
+
+      // Datalist para sugestões de marcas
+      const datalist = document.createElement('datalist');
+      datalist.id = 'brand-suggestions';
+
+      // Evento de busca ao digitar
+      let searchTimeout;
+      customInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        const query = this.value.trim();
+
+        if (query.length >= 2) {
+          searchTimeout = setTimeout(() => {
+            searchBrands(query, datalist);
+          }, 300); // Debounce de 300ms
+        }
+      });
+
+      customInputWrapper.appendChild(customInput);
+      customInputWrapper.appendChild(datalist);
+
+      // Evento para mostrar campo customizado
+      input.addEventListener('change', function() {
+        if (this.value === '__OTHER__') {
+          customInputWrapper.style.display = 'block';
+          customInput.required = required;
+          input.required = false;
+          input.name = ''; // Remove do envio
+          customInput.name = `ml_attr[${attr.id}]`;
+          customInput.focus();
+        } else {
+          customInputWrapper.style.display = 'none';
+          customInput.required = false;
+          customInput.name = '';
+          input.name = `ml_attr[${attr.id}]`;
+          input.required = required;
+        }
+      });
+
+      wrapper.appendChild(input);
+      wrapper.appendChild(customInputWrapper);
+
+      // Adiciona dica de busca
+      const hint = document.createElement('small');
+      hint.className = 'text-muted';
+      hint.innerHTML = '<i class="bi bi-info-circle"></i> Você pode selecionar uma marca da lista, usar "Genérico" ou digitar uma marca personalizada.';
+      wrapper.appendChild(hint);
+
+      div.appendChild(wrapper);
+      return div;
+    }
+
+    // Select normal para outros atributos com valores predefinidos
     input = document.createElement('select');
     input.className = 'form-select';
     input.name = `ml_attr[${attr.id}]`;
@@ -857,6 +962,57 @@ function createAttributeField(attr, required, savedValue) {
 
   div.appendChild(input);
   return div;
+}
+
+// Função para buscar marcas na API do Mercado Livre
+async function searchBrands(query, datalist) {
+  try {
+    // Busca sugestões de marcas diretamente da API pública do ML
+    const response = await fetch(`https://api.mercadolibre.com/sites/MLB/domain_discovery/search?q=${encodeURIComponent(query)}`);
+
+    if (!response.ok) {
+      console.warn('Erro ao buscar marcas:', response.status);
+      return;
+    }
+
+    const data = await response.json();
+
+    // Limpa sugestões anteriores
+    datalist.innerHTML = '';
+
+    // Extrai marcas únicas dos resultados
+    const brands = new Set();
+
+    if (data && Array.isArray(data)) {
+      data.forEach(item => {
+        // Tenta extrair marca de diferentes campos
+        if (item.attributes) {
+          item.attributes.forEach(attr => {
+            if (attr.id === 'BRAND' && attr.value_name) {
+              brands.add(attr.value_name);
+            }
+          });
+        }
+      });
+    }
+
+    // Adiciona sugestões ao datalist
+    brands.forEach(brand => {
+      const option = document.createElement('option');
+      option.value = brand;
+      datalist.appendChild(option);
+    });
+
+    // Se não encontrou nenhuma marca, adiciona a própria busca como opção
+    if (brands.size === 0) {
+      const option = document.createElement('option');
+      option.value = query;
+      datalist.appendChild(option);
+    }
+
+  } catch (error) {
+    console.warn('Erro ao buscar marcas:', error);
+  }
 }
 
 // Carrega atributos se já tiver categoria selecionada
