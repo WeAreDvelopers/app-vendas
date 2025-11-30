@@ -12,6 +12,16 @@
     <div class="col-md-2">
       <button class="btn btn-dark w-100">Buscar</button>
     </div>
+    <div class="col-md-2">
+      <button type="button" class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#syncModal">
+        <i class="bi bi-arrow-repeat"></i> Sincronizar
+      </button>
+    </div>
+    <div class="col-md-2 text-end">
+      <a href="{{ route('panel.products.create') }}" class="btn btn-success w-100">
+        <i class="bi bi-plus-circle"></i> Adicionar
+      </a>
+    </div>
   </form>
 
   <div class="table-responsive">
@@ -155,5 +165,149 @@
   </div>
 </div>
 @endforeach
+
+<!-- Modal de Sincronização -->
+<div class="modal fade" id="syncModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title">
+          <i class="bi bi-arrow-repeat"></i> Sincronizar Produtos
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info">
+          <i class="bi bi-info-circle"></i>
+          <strong>Como funciona:</strong>
+          <p class="mb-0 mt-2">
+            Esta função irá buscar todos os produtos publicados nas plataformas conectadas
+            e importá-los para sua base local.
+          </p>
+        </div>
+
+        <h6 class="mb-3">Selecione a plataforma:</h6>
+
+        <div class="d-grid gap-2">
+          <button type="button" class="btn btn-outline-primary btn-lg" onclick="syncPlatform('mercado_livre')">
+            <i class="bi bi-shop"></i> Mercado Livre
+          </button>
+
+          <button type="button" class="btn btn-outline-secondary btn-lg" disabled>
+            <i class="bi bi-cart"></i> Shopee
+            <small class="d-block">Em breve</small>
+          </button>
+
+          <button type="button" class="btn btn-outline-secondary btn-lg" disabled>
+            <i class="bi bi-bag"></i> Shopify
+            <small class="d-block">Em breve</small>
+          </button>
+        </div>
+
+        <!-- Área de progresso -->
+        <div id="syncProgress" class="mt-3" style="display:none;">
+          <div class="alert alert-warning">
+            <div class="d-flex align-items-center">
+              <div class="spinner-border spinner-border-sm me-2" role="status">
+                <span class="visually-hidden">Carregando...</span>
+              </div>
+              <div>
+                <strong>Sincronizando...</strong>
+                <p class="mb-0 small" id="syncMessage">Aguarde enquanto buscamos os produtos...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Resultado -->
+        <div id="syncResult" class="mt-3" style="display:none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          <i class="bi bi-x-circle"></i> Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function syncPlatform(platform) {
+  const progressDiv = document.getElementById('syncProgress');
+  const resultDiv = document.getElementById('syncResult');
+  const messageSpan = document.getElementById('syncMessage');
+
+  // Mostra loading
+  progressDiv.style.display = 'block';
+  resultDiv.style.display = 'none';
+
+  try {
+    const response = await fetch(`{{ route('panel.products.sync') }}?platform=${platform}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+      }
+    });
+
+    const data = await response.json();
+
+    // Esconde loading
+    progressDiv.style.display = 'none';
+
+    if (data.success) {
+      const stats = data.stats;
+      resultDiv.innerHTML = `
+        <div class="alert alert-success">
+          <i class="bi bi-check-circle"></i>
+          <strong>Sincronização concluída!</strong>
+          <div class="mt-2">
+            <div><strong>Total processado:</strong> ${stats.total}</div>
+            <div class="text-success"><strong>Criados:</strong> ${stats.created}</div>
+            <div class="text-info"><strong>Atualizados:</strong> ${stats.updated}</div>
+            <div class="text-muted"><strong>Ignorados:</strong> ${stats.skipped}</div>
+            ${stats.errors && stats.errors.length > 0 ? `
+              <div class="mt-2 text-danger">
+                <strong>Erros:</strong>
+                <ul class="mb-0">
+                  ${stats.errors.map(e => `<li>${e}</li>`).join('')}
+                </ul>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+      resultDiv.style.display = 'block';
+
+      // Recarrega a página após 2 segundos
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+
+    } else {
+      resultDiv.innerHTML = `
+        <div class="alert alert-danger">
+          <i class="bi bi-x-circle"></i>
+          <strong>Erro na sincronização</strong>
+          <p class="mb-0 mt-2">${data.message}</p>
+        </div>
+      `;
+      resultDiv.style.display = 'block';
+    }
+
+  } catch (error) {
+    console.error('Erro:', error);
+    progressDiv.style.display = 'none';
+    resultDiv.innerHTML = `
+      <div class="alert alert-danger">
+        <i class="bi bi-x-circle"></i>
+        <strong>Erro ao sincronizar</strong>
+        <p class="mb-0 mt-2">${error.message}</p>
+      </div>
+    `;
+    resultDiv.style.display = 'block';
+  }
+}
+</script>
 
 @endsection

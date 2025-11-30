@@ -907,4 +907,240 @@ class MercadoLivreService
             return null;
         }
     }
+
+    /**
+     * Sincroniza produtos do Mercado Livre para a base local
+     * Busca todos os produtos publicados e cria/atualiza na base local
+     */
+    public function syncProductsFromML(int $userId, int $companyId): array
+    {
+        $token = $this->getActiveToken($userId);
+
+        if (!$token) {
+            return [
+                'success' => false,
+                'message' => 'Token do Mercado Livre não encontrado. Conecte sua conta primeiro.'
+            ];
+        }
+
+        try {
+            $stats = [
+                'total' => 0,
+                'created' => 0,
+                'updated' => 0,
+                'skipped' => 0,
+                'errors' => []
+            ];
+
+            // Busca todos os produtos do seller
+            $offset = 0;
+            $limit = 50;
+            $hasMore = true;
+
+            while ($hasMore) {
+                $response = Http::withToken($token->access_token)
+                    ->get(self::API_BASE_URL . "/users/{$token->ml_user_id}/items/search", [
+                        'offset' => $offset,
+                        'limit' => $limit,
+                        'status' => 'active' // apenas ativos
+                    ]);
+
+                if (!$response->successful()) {
+                    Log::error('Erro ao buscar produtos do ML', [
+                        'status' => $response->status(),
+                        'body' => $response->body()
+                    ]);
+                    break;
+                }
+
+                $data = $response->json();
+                $itemIds = $data['results'] ?? [];
+
+                if (empty($itemIds)) {
+                    $hasMore = false;
+                    break;
+                }
+
+                // Busca detalhes de cada produto
+                foreach ($itemIds as $mlId) {
+                    try {
+                        $productData = $this->getMLProductDetails($token->access_token, $mlId);
+
+                        if ($productData) {
+                            $result = $this->importMLProduct($productData, $companyId);
+
+                            if ($result['created']) {
+                                $stats['created']++;
+                            } elseif ($result['updated']) {
+                                $stats['updated']++;
+                            } else {
+                                $stats['skipped']++;
+                            }
+
+                            $stats['total']++;
+                        }
+                    } catch (\Exception $e) {
+                        $stats['errors'][] = "Erro ao importar {$mlId}: " . $e->getMessage();
+                        Log::error("Erro ao importar produto ML {$mlId}", [
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+
+                $offset += $limit;
+
+                // Verifica se tem mais produtos
+                if (count($itemIds) < $limit || $offset >= ($data['paging']['total'] ?? 0)) {
+                    $hasMore = false;
+                }
+            }
+
+            return [
+                'success' => true,
+                'stats' => $stats,
+                'message' => "Sincronização concluída: {$stats['created']} criados, {$stats['updated']} atualizados, {$stats['skipped']} ignorados"
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Erro na sincronização do ML: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => 'Erro na sincronização: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Busca detalhes completos de um produto do ML
+     */
+    private function getMLProductDetails(string $accessToken, string $mlId): ?array
+    {
+        try {
+            $response = Http::withToken($accessToken)
+                ->get(self::API_BASE_URL . "/items/{$mlId}");
+
+            if ($response->successful()) {
+                return $response->json();
+            }
+
+            return null;
+
+        } catch (\Exception $e) {
+            Log::error("Erro ao buscar detalhes do produto ML {$mlId}: " . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Importa/atualiza um produto do ML na base local
+     */
+    private function importMLProduct(array $mlData, int $companyId): array
+    {
+        // Extrai informações do produto ML
+        $mlId = $mlData['id'];
+        $sku = $mlData['seller_custom_field'] ?? 'ML-' . $mlId;
+
+        // Busca atributos importantes
+        $attributes = $mlData['attributes'] ?? [];
+        $brand = null;
+        $ean = null;
+
+        foreach ($attributes as $attr) {
+            if ($attr['id'] === 'BRAND') {
+                $brand = $attr['value_name'] ?? null;
+            }
+            if ($attr['id'] === 'GTIN') {
+                $ean = $attr['value_name'] ?? null;
+            }
+        }
+
+        // Verifica se o produto já existe (por ML ID ou SKU)
+        $existingProduct = DB::table('products')
+            ->where('company_id', $companyId)
+            ->where(function($q) use ($sku, $mlId) {
+                $q->where('sku', $sku)
+                  ->orWhere('ml_id', $mlId);
+            })
+            ->first();
+
+        $productData = [
+            'ml_id' => $mlId,
+            'sku' => $sku,
+            'ean' => $ean,
+            'name' => $mlData['title'],
+            'brand' => $brand,
+            'category' => $mlData['category_id'] ?? null,
+            'title' => $mlData['title'],
+            'condition' => $mlData['condition'] === 'new' ? 'new' : 'used',
+            'warranty' => $mlData['warranty'] ?? null,
+            'video_url' => $mlData['video_id'] ? "https://www.youtube.com/watch?v={$mlData['video_id']}" : null,
+            'description' => $mlData['plain_text_description'] ?? $mlData['description'] ?? null,
+            'price' => $mlData['price'] ?? 0,
+            'stock' => $mlData['available_quantity'] ?? 0,
+            'status' => 'ready',
+            'company_id' => $companyId,
+            'updated_at' => now()
+        ];
+
+        // Adiciona dimensões se disponíveis
+        $shipping = $mlData['shipping'] ?? [];
+        if (!empty($shipping['dimensions'])) {
+            $productData['weight'] = ($shipping['dimensions']['weight'] ?? 0) * 1000; // kg para gramas
+            $productData['width'] = $shipping['dimensions']['width'] ?? 0;
+            $productData['height'] = $shipping['dimensions']['height'] ?? 0;
+            $productData['length'] = $shipping['dimensions']['length'] ?? 0;
+        }
+
+        if ($existingProduct) {
+            // Atualiza produto existente
+            DB::table('products')
+                ->where('id', $existingProduct->id)
+                ->update($productData);
+
+            // Importa imagens se não tiver
+            $existingImages = DB::table('product_images')
+                ->where('product_id', $existingProduct->id)
+                ->count();
+
+            if ($existingImages === 0) {
+                $this->importMLProductImages($mlData, $existingProduct->id);
+            }
+
+            return ['created' => false, 'updated' => true, 'product_id' => $existingProduct->id];
+
+        } else {
+            // Cria novo produto
+            $productData['created_at'] = now();
+            $productId = DB::table('products')->insertGetId($productData);
+
+            // Importa imagens
+            $this->importMLProductImages($mlData, $productId);
+
+            return ['created' => true, 'updated' => false, 'product_id' => $productId];
+        }
+    }
+
+    /**
+     * Importa imagens de um produto do ML
+     */
+    private function importMLProductImages(array $mlData, int $productId): void
+    {
+        $pictures = $mlData['pictures'] ?? [];
+
+        foreach ($pictures as $index => $picture) {
+            $imageUrl = $picture['url'] ?? $picture['secure_url'] ?? null;
+
+            if ($imageUrl) {
+                DB::table('product_images')->insert([
+                    'product_id' => $productId,
+                    'path' => $imageUrl,
+                    'source_url' => $imageUrl,
+                    'sort' => $index + 1,
+                    'bg_removed' => false,
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
+            }
+        }
+    }
 }

@@ -65,6 +65,10 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
 
     // Products, Listings, Orders
     Route::get('/products',          [ProductUIController::class, 'index'])->name('products.index');
+    Route::get('/products/create',   [ProductUIController::class, 'create'])->name('products.create');
+    Route::post('/products',         [ProductUIController::class, 'store'])->name('products.store');
+    Route::post('/products/sync',    [ProductUIController::class, 'sync'])->name('products.sync');
+    Route::post('/products/generate-description', [ProductUIController::class, 'generateDescription'])->name('products.generate-description');
     Route::get('/products/{id}',     [ProductUIController::class, 'show'])->name('products.show');
     Route::get('/products/{id}/edit', [ProductUIController::class, 'edit'])->name('products.edit');
     Route::put('/products/{id}',     [ProductUIController::class, 'update'])->name('products.update');
