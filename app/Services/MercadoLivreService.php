@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use App\Helpers\IntegrationSettings;
 
 class MercadoLivreService
 {
@@ -13,13 +14,37 @@ class MercadoLivreService
     private const TOKEN_URL = 'https://api.mercadolibre.com/oauth/token';
 
     /**
+     * Busca App ID da configuração ou banco de dados
+     */
+    private function getAppId(?int $companyId = null): string
+    {
+        if ($companyId) {
+            return IntegrationSettings::getMercadoLivreAppId($companyId) ?? config('services.mercado_livre.app_id');
+        }
+
+        return config('services.mercado_livre.app_id');
+    }
+
+    /**
+     * Busca Secret Key da configuração ou banco de dados
+     */
+    private function getSecretKey(?int $companyId = null): string
+    {
+        if ($companyId) {
+            return IntegrationSettings::getMercadoLivreSecretKey($companyId) ?? config('services.mercado_livre.secret_key');
+        }
+
+        return config('services.mercado_livre.secret_key');
+    }
+
+    /**
      * Gera URL de autorização para OAuth
      */
-    public function getAuthorizationUrl(): string
+    public function getAuthorizationUrl(?int $companyId = null): string
     {
         $params = [
             'response_type' => 'code',
-            'client_id' => config('services.mercado_livre.app_id'),
+            'client_id' => $this->getAppId($companyId),
             'redirect_uri' => config('services.mercado_livre.redirect_uri'),
         ];
 
@@ -29,13 +54,13 @@ class MercadoLivreService
     /**
      * Troca o código de autorização por tokens de acesso
      */
-    public function getAccessToken(string $code): ?array
+    public function getAccessToken(string $code, ?int $companyId = null): ?array
     {
         try {
             $response = Http::asForm()->post(self::TOKEN_URL, [
                 'grant_type' => 'authorization_code',
-                'client_id' => config('services.mercado_livre.app_id'),
-                'client_secret' => config('services.mercado_livre.secret_key'),
+                'client_id' => $this->getAppId($companyId),
+                'client_secret' => $this->getSecretKey($companyId),
                 'code' => $code,
                 'redirect_uri' => config('services.mercado_livre.redirect_uri'),
             ]);
@@ -56,13 +81,13 @@ class MercadoLivreService
     /**
      * Renova o access token usando refresh token
      */
-    public function refreshAccessToken(string $refreshToken): ?array
+    public function refreshAccessToken(string $refreshToken, ?int $companyId = null): ?array
     {
         try {
             $response = Http::asForm()->post(self::TOKEN_URL, [
                 'grant_type' => 'refresh_token',
-                'client_id' => config('services.mercado_livre.app_id'),
-                'client_secret' => config('services.mercado_livre.secret_key'),
+                'client_id' => $this->getAppId($companyId),
+                'client_secret' => $this->getSecretKey($companyId),
                 'refresh_token' => $refreshToken,
             ]);
 

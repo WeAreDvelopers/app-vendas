@@ -10,7 +10,6 @@ use App\Http\Controllers\Panel\OrderUIController;
 use App\Http\Controllers\Panel\SupplierController;
 use App\Http\Controllers\MonitorController;
 use App\Http\Controllers\ImportController;
-use App\Http\Controllers\WebhookController;
 
 // Authentication routes
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
@@ -21,7 +20,6 @@ Route::get('/', fn() => redirect()->route('panel.dashboard'))->name('home');
 
 // Mercado Livre OAuth Callback (sem autenticação para receber callback)
 Route::get('/mercado-livre/callback', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'callback'])->name('mercado-livre.callback');
-Route::post('/mercado-livre/notifications', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'notifications'])->name('mercado-livre.notifications');
 
 Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
@@ -42,6 +40,7 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::get('/integrations/mercado-livre/callback', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreCallback'])->name('integrations.ml.callback');
     Route::post('/integrations/mercado-livre/disconnect', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreDisconnect'])->name('integrations.ml.disconnect');
     Route::post('/integrations/mercado-livre/reconnect', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreReconnect'])->name('integrations.ml.reconnect');
+    Route::post('/integrations/mercado-livre/save-credentials', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreSaveCredentials'])->name('integrations.ml.save-credentials');
 
     // Google Drive Integration
     Route::get('/integrations/google-drive/connect', [\App\Http\Controllers\Panel\IntegrationController::class, 'googleDriveConnect'])->name('integrations.drive.connect');
@@ -110,5 +109,4 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
 });
 
 Route::post('/import/supplier', [ImportController::class,'store']);
-Route::post('/import/convert-without-ai', [ImportController::class,'convertWithoutAI']);
-Route::post('/webhooks/meli',   [WebhookController::class,'meli']); 
+Route::post('/import/convert-without-ai', [ImportController::class,'convertWithoutAI']); 

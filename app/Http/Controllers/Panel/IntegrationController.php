@@ -27,7 +27,19 @@ class IntegrationController extends Controller
         $driveIntegration = $integrations->get('google_drive');
         $driveConnected = $driveIntegration && $driveIntegration->isConnected();
 
-        return view('panel.integrations.index', compact('company', 'mlIntegration', 'mlConnected', 'driveIntegration', 'driveConnected'));
+        // Busca credenciais do Mercado Livre
+        $mlAppId = $this->getSetting($company->id, 'mercado_livre', 'app_id');
+        $mlSecretKey = $this->getSetting($company->id, 'mercado_livre', 'secret_key');
+
+        return view('panel.integrations.index', compact(
+            'company',
+            'mlIntegration',
+            'mlConnected',
+            'driveIntegration',
+            'driveConnected',
+            'mlAppId',
+            'mlSecretKey'
+        ));
     }
 
     /**
@@ -350,5 +362,82 @@ class IntegrationController extends Controller
             \Log::error('Erro ao renovar token Google Drive: ' . $e->getMessage());
             return false;
         }
+    }
+
+    /**
+     * Salva credenciais do Mercado Livre
+     */
+    public function mercadoLivreSaveCredentials(Request $request)
+    {
+        $request->validate([
+            'ml_app_id' => 'required|string|max:100',
+            'ml_secret_key' => 'required|string|max:255',
+        ], [
+            'ml_app_id.required' => 'O App ID é obrigatório',
+            'ml_secret_key.required' => 'A Secret Key é obrigatória',
+        ]);
+
+        $companyId = $request->user()->current_company_id;
+
+        try {
+            // Salva App ID
+            $this->saveSetting($companyId, 'mercado_livre', 'app_id', $request->ml_app_id);
+
+            // Salva Secret Key (criptografada)
+            $this->saveSetting($companyId, 'mercado_livre', 'secret_key', $request->ml_secret_key, true);
+
+            return redirect()->route('panel.integrations.index')
+                ->with('ok', 'Credenciais do Mercado Livre salvas com sucesso!');
+
+        } catch (\Exception $e) {
+            \Log::error('Erro ao salvar credenciais ML: ' . $e->getMessage());
+
+            return back()
+                ->withInput()
+                ->with('error', 'Erro ao salvar credenciais: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Salva uma configuração
+     */
+    private function saveSetting(int $companyId, string $platform, string $key, ?string $value, bool $encrypt = false): void
+    {
+        if ($value === null) {
+            return;
+        }
+
+        $settingValue = $encrypt ? encrypt($value) : $value;
+
+        \DB::table('integration_settings')->updateOrInsert(
+            [
+                'company_id' => $companyId,
+                'platform' => $platform,
+                'key' => $key
+            ],
+            [
+                'value' => $settingValue,
+                'is_encrypted' => $encrypt,
+                'updated_at' => now()
+            ]
+        );
+    }
+
+    /**
+     * Busca uma configuração
+     */
+    private function getSetting(int $companyId, string $platform, string $key): ?string
+    {
+        $setting = \DB::table('integration_settings')
+            ->where('company_id', $companyId)
+            ->where('platform', $platform)
+            ->where('key', $key)
+            ->first();
+
+        if (!$setting) {
+            return null;
+        }
+
+        return $setting->is_encrypted ? decrypt($setting->value) : $setting->value;
     }
 }

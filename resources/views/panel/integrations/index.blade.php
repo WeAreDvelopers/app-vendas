@@ -39,6 +39,10 @@
         </div>
 
         <div class="d-flex gap-2">
+          <button type="button" class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#mlCredentialsModal">
+            <i class="bi bi-key"></i> Configurar API
+          </button>
+
           <form method="POST" action="{{ route('panel.integrations.ml.disconnect') }}" class="d-inline">
             @csrf
             <button type="submit" class="btn btn-outline-danger btn-sm"
@@ -70,9 +74,15 @@
           Conecte sua conta do Mercado Livre para publicar e gerenciar seus produtos automaticamente.
         </p>
 
-        <a href="{{ route('panel.integrations.ml.connect') }}" class="btn btn-primary">
-          <i class="bi bi-link-45deg"></i> Conectar Mercado Livre
-        </a>
+        <div class="d-flex gap-2 mb-3">
+          <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#mlCredentialsModal">
+            <i class="bi bi-key"></i> Configurar API
+          </button>
+
+          <a href="{{ route('panel.integrations.ml.connect') }}" class="btn btn-primary">
+            <i class="bi bi-link-45deg"></i> Conectar Mercado Livre
+          </a>
+        </div>
 
         <hr class="my-3">
 
@@ -282,4 +292,187 @@
     </div>
   </div>
 </div>
+
+<!-- Modal: Configurar Credenciais do Mercado Livre -->
+<div class="modal fade" id="mlCredentialsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-warning">
+        <h5 class="modal-title">
+          <i class="bi bi-key me-2"></i>Credenciais de API - Mercado Livre
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <form method="POST" action="{{ route('panel.integrations.ml.save-credentials') }}">
+        @csrf
+
+        <div class="modal-body">
+          <div class="alert alert-info">
+            <i class="bi bi-info-circle me-2"></i>
+            <strong>Como obter suas credenciais:</strong>
+            <ol class="mb-0 mt-2 ps-3 small">
+              <li>Acesse <a href="https://developers.mercadolivre.com.br/devcenter" target="_blank">Mercado Livre Developers</a></li>
+              <li>Faça login com sua conta</li>
+              <li>Vá em "Minhas aplicações" e crie uma nova aplicação</li>
+              <li>Copie o <strong>App ID</strong> e <strong>Secret Key</strong></li>
+              <li>Configure as URLs abaixo no painel do ML</li>
+            </ol>
+          </div>
+
+          <div class="row g-3">
+            <!-- App ID -->
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">
+                App ID (Client ID) <span class="text-danger">*</span>
+              </label>
+              <input type="text" name="ml_app_id" id="mlAppIdInput" class="form-control @error('ml_app_id') is-invalid @enderror"
+                     value="{{ old('ml_app_id', $mlAppId ?? '') }}"
+                     placeholder="1234567890123456"
+                     required>
+              @error('ml_app_id')
+                <div class="invalid-feedback">{{ $message }}</div>
+              @enderror
+              <small class="text-muted">ID da sua aplicação no Mercado Livre</small>
+            </div>
+
+            <!-- Secret Key -->
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">
+                Secret Key <span class="text-danger">*</span>
+              </label>
+              <div class="input-group">
+                <input type="password" id="mlSecretKeyInput" name="ml_secret_key"
+                       class="form-control @error('ml_secret_key') is-invalid @enderror"
+                       value="{{ old('ml_secret_key', $mlSecretKey ?? '') }}"
+                       placeholder="••••••••••••••••••••"
+                       required>
+                <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('mlSecretKeyInput')">
+                  <i class="bi bi-eye"></i>
+                </button>
+                @error('ml_secret_key')
+                  <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+              </div>
+              <small class="text-muted">Chave secreta da sua aplicação</small>
+            </div>
+          </div>
+
+          <hr class="my-3">
+
+          <h6 class="mb-3">
+            <i class="bi bi-link-45deg me-2"></i>URLs para Configurar no Mercado Livre
+          </h6>
+
+          <div class="row g-3">
+            <!-- Redirect URL -->
+            <div class="col-md-12">
+              <label class="form-label fw-semibold">
+                URL de Redirect (Callback OAuth)
+              </label>
+              <div class="input-group">
+                <input type="text" class="form-control" id="redirectUrl" value="{{ url('/mercado-livre/callback') }}" readonly>
+                <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('{{ url('/mercado-livre/callback') }}')">
+                  <i class="bi bi-clipboard"></i> Copiar
+                </button>
+              </div>
+              <small class="text-muted">
+                <i class="bi bi-info-circle"></i>
+                Cole esta URL em <strong>Redirect URI</strong> no painel do ML
+              </small>
+            </div>
+
+            <!-- Webhook URL -->
+            <div class="col-md-12">
+              <label class="form-label fw-semibold">
+                URL de Notificações (Webhook)
+              </label>
+              <div class="input-group">
+                <input type="text" class="form-control" id="webhookUrl" value="{{ url('/api/webhooks/mercado-livre') }}" readonly>
+                <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('{{ url('/api/webhooks/mercado-livre') }}')">
+                  <i class="bi bi-clipboard"></i> Copiar
+                </button>
+              </div>
+              <small class="text-muted">
+                <i class="bi bi-info-circle"></i>
+                Cole esta URL em <strong>Notifications URL</strong> no painel do ML para receber vendas e perguntas
+              </small>
+            </div>
+          </div>
+
+          @if($mlAppId)
+            <div class="alert alert-success mt-3 mb-0">
+              <i class="bi bi-check-circle me-2"></i>
+              <strong>Credenciais já configuradas!</strong>
+              <p class="mb-0 small mt-1">
+                Você pode atualizar suas credenciais preenchendo os campos acima novamente.
+              </p>
+            </div>
+          @endif
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            <i class="bi bi-x-circle"></i> Cancelar
+          </button>
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-save"></i> Salvar Credenciais
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+@push('scripts')
+<script>
+// Abre o modal automaticamente se houver erros de validação
+document.addEventListener('DOMContentLoaded', function() {
+  @if($errors->has('ml_app_id') || $errors->has('ml_secret_key'))
+    const mlModal = new bootstrap.Modal(document.getElementById('mlCredentialsModal'));
+    mlModal.show();
+  @endif
+});
+
+// Toggle password visibility
+function togglePassword(fieldId) {
+  const field = document.getElementById(fieldId);
+  const button = field.nextElementSibling;
+  const icon = button.querySelector('i');
+
+  if (field.type === 'password') {
+    field.type = 'text';
+    icon.classList.remove('bi-eye');
+    icon.classList.add('bi-eye-slash');
+  } else {
+    field.type = 'password';
+    icon.classList.remove('bi-eye-slash');
+    icon.classList.add('bi-eye');
+  }
+}
+
+// Copy to clipboard
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    // Show temporary success message
+    const btn = event.target.closest('button');
+    const originalHtml = btn.innerHTML;
+
+    btn.innerHTML = '<i class="bi bi-check"></i> Copiado!';
+    btn.classList.add('btn-success');
+    btn.classList.remove('btn-outline-secondary');
+
+    setTimeout(() => {
+      btn.innerHTML = originalHtml;
+      btn.classList.remove('btn-success');
+      btn.classList.add('btn-outline-secondary');
+    }, 2000);
+  }).catch(err => {
+    console.error('Erro ao copiar:', err);
+    alert('Erro ao copiar para área de transferência');
+  });
+}
+</script>
+@endpush
+
 @endsection
