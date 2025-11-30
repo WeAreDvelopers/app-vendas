@@ -121,20 +121,44 @@ class ProductUIController extends Controller {
             'video_url.url' => 'A URL do vídeo deve ser válida.',
         ]);
 
-        // Cria o produto
+        // Prepara atributos extras (campos que não existem na tabela products)
+        $attributes = [];
+
+        if ($r->category) {
+            $attributes['category'] = $r->category;
+        }
+        if ($r->title) {
+            $attributes['title'] = $r->title;
+        }
+        if ($r->condition) {
+            $attributes['condition'] = $r->condition;
+        }
+        if ($r->warranty) {
+            $attributes['warranty'] = $r->warranty;
+        }
+        if ($r->video_url) {
+            $attributes['video_url'] = $r->video_url;
+        }
+        if ($r->weight) {
+            $attributes['weight'] = $r->weight;
+        }
+        if ($r->width) {
+            $attributes['width'] = $r->width;
+        }
+        if ($r->height) {
+            $attributes['height'] = $r->height;
+        }
+        if ($r->length) {
+            $attributes['length'] = $r->length;
+        }
+
+        // Cria o produto (apenas com colunas que existem na tabela)
         $productId = DB::table('products')->insertGetId([
             // Campos básicos
             'sku' => $r->sku,
             'name' => $r->name,
             'ean' => $r->ean,
             'brand' => $r->brand,
-            'category' => $r->category,
-
-            // Campos do Mercado Livre
-            'title' => $r->title,
-            'condition' => $r->condition,
-            'warranty' => $r->warranty,
-            'video_url' => $r->video_url,
 
             // Descrição
             'description' => $r->description,
@@ -144,11 +168,8 @@ class ProductUIController extends Controller {
             'cost_price' => $r->cost_price,
             'stock' => $r->stock,
 
-            // Dimensões e peso
-            'weight' => $r->weight,
-            'width' => $r->width,
-            'height' => $r->height,
-            'length' => $r->length,
+            // Atributos extras como JSON
+            'attributes' => !empty($attributes) ? json_encode($attributes) : null,
 
             // Status inicial
             'status' => 'ready',
@@ -225,19 +246,34 @@ class ProductUIController extends Controller {
             'video_url.url' => 'A URL do vídeo deve ser válida.',
         ]);
 
-        // Atualiza o produto com todos os campos
+        // Busca produto atual para mesclar atributos
+        $currentProduct = DB::table('products')->where('id', $id)->first();
+        $currentAttributes = $currentProduct && $currentProduct->attributes
+            ? json_decode($currentProduct->attributes, true)
+            : [];
+
+        // Prepara atributos extras (campos que não existem na tabela products)
+        $attributes = array_merge($currentAttributes, [
+            'category' => $r->category,
+            'title' => $r->title,
+            'condition' => $r->condition,
+            'warranty' => $r->warranty,
+            'video_url' => $r->video_url,
+            'weight' => $r->weight,
+            'width' => $r->width,
+            'height' => $r->height,
+            'length' => $r->length,
+        ]);
+
+        // Remove valores nulos
+        $attributes = array_filter($attributes, fn($v) => $v !== null);
+
+        // Atualiza o produto (apenas com colunas que existem na tabela)
         DB::table('products')->where('id', $id)->update([
             // Campos básicos
             'name' => $r->name,
             'ean' => $r->ean,
             'brand' => $r->brand,
-            'category' => $r->category,
-
-            // Campos do Mercado Livre
-            'title' => $r->title,
-            'condition' => $r->condition,
-            'warranty' => $r->warranty,
-            'video_url' => $r->video_url,
 
             // Descrição
             'description' => $r->description,
@@ -247,11 +283,8 @@ class ProductUIController extends Controller {
             'cost_price' => $r->cost_price,
             'stock' => $r->stock,
 
-            // Dimensões e peso
-            'weight' => $r->weight,
-            'width' => $r->width,
-            'height' => $r->height,
-            'length' => $r->length,
+            // Atributos extras como JSON
+            'attributes' => !empty($attributes) ? json_encode($attributes) : null,
 
             // Atualiza timestamp
             'updated_at' => now()
