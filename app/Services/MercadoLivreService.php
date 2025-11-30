@@ -1155,33 +1155,44 @@ class MercadoLivreService
             })
             ->first();
 
+        // Prepara atributos extras como JSON (warranty, dimensions, etc)
+        $attributes = [];
+        if (!empty($mlData['warranty'])) {
+            $attributes['warranty'] = $mlData['warranty'];
+        }
+        if (!empty($mlData['video_id'])) {
+            $attributes['video_url'] = "https://www.youtube.com/watch?v={$mlData['video_id']}";
+        }
+        if (!empty($mlData['category_id'])) {
+            $attributes['category_id'] = $mlData['category_id'];
+        }
+        if (!empty($mlData['condition'])) {
+            $attributes['condition'] = $mlData['condition'];
+        }
+
+        // Adiciona dimensões se disponíveis
+        $shipping = $mlData['shipping'] ?? [];
+        if (!empty($shipping['dimensions'])) {
+            $attributes['weight'] = ($shipping['dimensions']['weight'] ?? 0) * 1000; // kg para gramas
+            $attributes['width'] = $shipping['dimensions']['width'] ?? 0;
+            $attributes['height'] = $shipping['dimensions']['height'] ?? 0;
+            $attributes['length'] = $shipping['dimensions']['length'] ?? 0;
+        }
+
         $productData = [
             'ml_id' => $mlId,
             'sku' => $sku,
             'ean' => $ean,
             'name' => $mlData['title'],
             'brand' => $brand,
-            'category' => $mlData['category_id'] ?? null,
-            'title' => $mlData['title'],
-            'condition' => $mlData['condition'] === 'new' ? 'new' : 'used',
-            'warranty' => $mlData['warranty'] ?? null,
-            'video_url' => $mlData['video_id'] ? "https://www.youtube.com/watch?v={$mlData['video_id']}" : null,
             'description' => $mlData['plain_text_description'] ?? $mlData['description'] ?? null,
             'price' => $mlData['price'] ?? 0,
             'stock' => $mlData['available_quantity'] ?? 0,
+            'attributes' => !empty($attributes) ? json_encode($attributes) : null,
             'status' => 'ready',
             'company_id' => $companyId,
             'updated_at' => now()
         ];
-
-        // Adiciona dimensões se disponíveis
-        $shipping = $mlData['shipping'] ?? [];
-        if (!empty($shipping['dimensions'])) {
-            $productData['weight'] = ($shipping['dimensions']['weight'] ?? 0) * 1000; // kg para gramas
-            $productData['width'] = $shipping['dimensions']['width'] ?? 0;
-            $productData['height'] = $shipping['dimensions']['height'] ?? 0;
-            $productData['length'] = $shipping['dimensions']['length'] ?? 0;
-        }
 
         if ($existingProduct) {
             // Atualiza produto existente
