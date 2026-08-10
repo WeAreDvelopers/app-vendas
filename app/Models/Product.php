@@ -2,11 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToCompany;
 use Illuminate\Database\Eloquent\Model;
 
 class Product extends Model
 {
+    use BelongsToCompany;
+
     protected $fillable = [
+        'company_id',
         'sku', 'ean', 'name', 'brand', 'category',
         'title', 'condition', 'warranty', 'video_url',
         'description', 'price', 'cost_price', 'stock',
