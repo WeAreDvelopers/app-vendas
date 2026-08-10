@@ -2,18 +2,20 @@
 namespace App\Http\Controllers\Panel;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use App\Jobs\ImportSupplierFile;
+use App\Jobs\ProcessProductWithAI;
+use App\Models\ImportError;
+use App\Models\ProductRaw;
+use App\Models\Supplier;
+use App\Models\SupplierImport;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class ImportUIController extends Controller {
     public function index(Request $r) {
         $search = trim($r->get('q', ''));
-        $companyId = auth()->user()->current_company_id;
 
-        $query = DB::table('supplier_imports')
-            ->where('company_id', $companyId);
+        $query = SupplierImport::query();
 
         if ($search) {
             $query->where(function($q) use ($search) {
@@ -28,8 +30,7 @@ class ImportUIController extends Controller {
               ->paginate(12)
               ->withQueryString();
 
-        $suppliers = \App\Models\Supplier::where('company_id', $companyId)
-            ->where('active', true)
+        $suppliers = Supplier::where('active', true)
             ->orderBy('name')
             ->get();
 
@@ -53,33 +54,30 @@ class ImportUIController extends Controller {
 
         // Se fornecedor foi selecionado, pega o nome dele
         if ($supplierId) {
-            $supplier = \App\Models\Supplier::find($supplierId);
+            $supplier = Supplier::find($supplierId);
             $supplierName = $supplier->name;
         }
 
         $path = $r->file('file')->store('supplier_imports', 'local');
         $type = strtolower($r->file('file')->getClientOriginalExtension());
-        $id = DB::table('supplier_imports')->insertGetId([
-            'company_id'    => auth()->user()->current_company_id,
+        $import = SupplierImport::create([
             'supplier_id'   => $supplierId,
             'supplier_name' => $supplierName,
             'source_file'   => $path,
             'source_type'   => in_array($type,['csv','xlsx']) ? $type : 'pdf',
             'status'        => 'queued',
             'mapping'       => $r->input('mapping') ?: null,
-            'created_at'    => now(), 'updated_at' => now(),
         ]);
-        ImportSupplierFile::dispatch($id);
+        ImportSupplierFile::dispatch($import->id);
         return back()->with('ok','Importação enviada para a fila!');
     }
 
     public function show(int $id, Request $r) {
-        $imp = DB::table('supplier_imports')->find($id);
-        abort_unless($imp, 404);
+        $imp = SupplierImport::findOrFail($id);
 
         $search = trim($r->get('q', ''));
 
-        $query = DB::table('products_raw')->where('supplier_import_id', $id);
+        $query = ProductRaw::where('supplier_import_id', $imp->id);
 
         if ($search) {
             $query->where(function($q) use ($search) {
@@ -93,17 +91,15 @@ class ImportUIController extends Controller {
 
         $rows = $query->orderByDesc('id')->paginate(20)->withQueryString();
 
-        $errorsCount = DB::table('import_errors')->where('supplier_import_id', $id)->count();
+        $errorsCount = ImportError::where('supplier_import_id', $imp->id)->count();
 
         return view('panel.imports.show', compact('imp', 'rows', 'errorsCount', 'search'));
     }
 
     public function errors(int $id) {
-        $imp = DB::table('supplier_imports')->find($id);
-        abort_unless($imp, 404);
+        $imp = SupplierImport::findOrFail($id);
 
-        $errors = DB::table('import_errors')
-            ->where('supplier_import_id', $id)
+        $errors = ImportError::where('supplier_import_id', $imp->id)
             ->orderBy('row_number')
             ->paginate(50)
             ->withQueryString();
@@ -112,11 +108,9 @@ class ImportUIController extends Controller {
     }
 
     public function exportErrors(int $id) {
-        $imp = DB::table('supplier_imports')->find($id);
-        abort_unless($imp, 404);
+        $imp = SupplierImport::findOrFail($id);
 
-        $errors = DB::table('import_errors')
-            ->where('supplier_import_id', $id)
+        $errors = ImportError::where('supplier_import_id', $imp->id)
             ->orderBy('row_number')
             ->get();
 
@@ -138,7 +132,7 @@ class ImportUIController extends Controller {
 
             // Dados
             foreach ($errors as $error) {
-                $rowData = json_decode($error->row_data, true);
+                $rowData = is_array($error->row_data) ? $error->row_data : json_decode($error->row_data, true);
                 $rowDataStr = '';
                 if ($rowData) {
                     $parts = [];
@@ -170,22 +164,21 @@ class ImportUIController extends Controller {
             'product_ids.*' => 'required|exists:products_raw,id'
         ]);
 
-        $imp = DB::table('supplier_imports')->find($id);
-        abort_unless($imp, 404);
+        $imp = SupplierImport::findOrFail($id);
 
-        $productIds = $r->input('product_ids');
+        $rawIds = ProductRaw::where('supplier_import_id', $imp->id)
+            ->whereIn('id', $r->input('product_ids'))
+            ->pluck('id');
 
-        // Dispatch job para cada produto selecionado
-        foreach ($productIds as $productId) {
-            \App\Jobs\ProcessProductWithAI::dispatch($productId);
+        foreach ($rawIds as $rawId) {
+            ProcessProductWithAI::dispatch($rawId);
         }
 
-        return back()->with('ok', count($productIds) . ' produto(s) enviado(s) para processamento com IA!');
+        return back()->with('ok', $rawIds->count() . ' produto(s) enviado(s) para processamento com IA!');
     }
 
     public function destroy(int $id) {
-        $import = DB::table('supplier_imports')->find($id);
-        abort_unless($import, 404);
+        $import = SupplierImport::findOrFail($id);
 
         try {
             // 1. Remove o arquivo de importação do storage
@@ -194,13 +187,13 @@ class ImportUIController extends Controller {
             }
 
             // 2. Remove todos os erros relacionados
-            DB::table('import_errors')->where('supplier_import_id', $id)->delete();
+            ImportError::where('supplier_import_id', $import->id)->delete();
 
             // 3. Remove todos os produtos raw relacionados
-            DB::table('products_raw')->where('supplier_import_id', $id)->delete();
+            ProductRaw::where('supplier_import_id', $import->id)->delete();
 
             // 4. Remove a importação
-            DB::table('supplier_imports')->where('id', $id)->delete();
+            $import->delete();
 
             \Log::info("Importação #{$id} excluída com sucesso");
 
@@ -214,18 +207,15 @@ class ImportUIController extends Controller {
     }
 
     public function destroyItem(int $importId, int $itemId) {
-        $import = DB::table('supplier_imports')->find($importId);
-        abort_unless($import, 404);
+        $import = SupplierImport::findOrFail($importId);
 
-        $item = DB::table('products_raw')
-            ->where('id', $itemId)
-            ->where('supplier_import_id', $importId)
-            ->first();
-        abort_unless($item, 404);
+        $item = ProductRaw::where('id', $itemId)
+            ->where('supplier_import_id', $import->id)
+            ->firstOrFail();
 
         try {
             // Remove o item
-            DB::table('products_raw')->where('id', $itemId)->delete();
+            $item->delete();
 
             \Log::info("Item #{$itemId} da importação #{$importId} excluído com sucesso");
 
