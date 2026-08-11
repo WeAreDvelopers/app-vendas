@@ -16,7 +16,7 @@ class Product extends Model
         'description', 'price', 'cost_price', 'stock',
         'weight', 'width', 'height', 'length',
         'status', 'reference_image_path', 'similarity_threshold',
-        'product_raw_id'
+        'product_raw_id', 'attributes'
     ];
 
     protected $casts = [

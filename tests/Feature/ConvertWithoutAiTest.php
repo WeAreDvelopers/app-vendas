@@ -31,6 +31,11 @@ class ConvertWithoutAiTest extends TestCase
             ->assertJson(['ok' => true]);
 
         $this->assertDatabaseHas('products', ['sku' => 'SKU1', 'company_id' => $a->id]);
+
+        $product = \App\Models\Product::where('sku', 'SKU1')->first();
+        $attrs = json_decode($product->attributes, true);
+        $this->assertTrue($attrs['manual_conversion']);
+        $this->assertFalse($attrs['ai_generated']);
     }
 
     public function test_cannot_convert_raw_product_of_other_company(): void
