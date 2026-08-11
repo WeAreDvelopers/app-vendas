@@ -9,11 +9,11 @@ use Illuminate\Support\Facades\DB;
 
 class OrderIngestionService
 {
-    public function ingest(int $companyId, array $mlOrder): Order
+    public function ingest(int $companyId, array $mlOrder, bool $notify = true): Order
     {
         $mlOrderId = (string) ($mlOrder['id'] ?? '');
 
-        return DB::transaction(function () use ($companyId, $mlOrder, $mlOrderId) {
+        return DB::transaction(function () use ($companyId, $mlOrder, $mlOrderId, $notify) {
             $order = Order::withoutCompanyScope()
                 ->firstOrNew(['company_id' => $companyId, 'ml_order_id' => $mlOrderId]);
             $isNew = !$order->exists;
@@ -58,7 +58,7 @@ class OrderIngestionService
                 $oi->save();
             }
 
-            if ($isNew) {
+            if ($isNew && $notify) {
                 $this->notify($companyId, $order);
             }
 

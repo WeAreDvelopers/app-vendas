@@ -1270,4 +1270,39 @@ class MercadoLivreService
 
         return $response->json();
     }
+
+    /**
+     * Busca uma página de pedidos do vendedor (para backfill histórico).
+     * Retorna o corpo bruto da API (com 'results' e 'paging') ou null.
+     */
+    public function searchOrders(int $companyId, int $offset = 0, int $limit = 50, ?string $dateFrom = null): ?array
+    {
+        $token = $this->getActiveTokenFromIntegration($companyId);
+        if (!$token || empty($token->access_token) || empty($token->ml_user_id)) {
+            Log::warning('searchOrders: sem token/vendedor para empresa', ['company_id' => $companyId]);
+            return null;
+        }
+
+        $params = [
+            'seller' => $token->ml_user_id,
+            'offset' => $offset,
+            'limit' => $limit,
+            'sort' => 'date_desc',
+        ];
+        if ($dateFrom) {
+            $params['order.date_created.from'] = $dateFrom;
+        }
+
+        $response = Http::withToken($token->access_token)
+            ->get('https://api.mercadolibre.com/orders/search', $params);
+
+        if (!$response->successful()) {
+            Log::error('searchOrders: falha ao buscar pedidos', [
+                'company_id' => $companyId, 'status' => $response->status(),
+            ]);
+            return null;
+        }
+
+        return $response->json();
+    }
 }
