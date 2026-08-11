@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Company;
 use App\Models\Order;
+use App\Models\OrderItem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\CreatesTenants;
 use Tests\TestCase;
@@ -69,5 +70,38 @@ class OrderListingPanelTest extends TestCase
         $res->assertStatus(200);
         $res->assertSee('A-SHIPPED');
         $res->assertDontSee('A-PAID');
+    }
+
+    public function test_show_renders_own_order_with_items(): void
+    {
+        $a = $this->makeCompany('A');
+        $order = $this->makeOrder($a, ['ml_order_id' => 'A-777']);
+        OrderItem::withoutCompanyScope()->create([
+            'company_id' => $a->id,
+            'order_id' => $order->id,
+            'ml_item_id' => 'MLB1',
+            'title' => 'Produto Detalhe',
+            'qty' => 3,
+            'price' => 25,
+        ]);
+
+        $this->actingAsCompanyUser($a);
+
+        $res = $this->get(route('panel.orders.show', $order->id));
+
+        $res->assertStatus(200);
+        $res->assertSee('A-777');
+        $res->assertSee('Produto Detalhe');
+    }
+
+    public function test_show_of_other_company_order_is_404(): void
+    {
+        $a = $this->makeCompany('A');
+        $b = $this->makeCompany('B');
+        $orderB = $this->makeOrder($b, ['ml_order_id' => 'B-777']);
+
+        $this->actingAsCompanyUser($a);
+
+        $this->get(route('panel.orders.show', $orderB->id))->assertStatus(404);
     }
 }

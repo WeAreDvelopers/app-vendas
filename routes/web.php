@@ -97,6 +97,7 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
 
     Route::get('/listings',          [ListingUIController::class, 'index'])->name('listings.index');
     Route::get('/orders',            [OrderUIController::class, 'index'])->name('orders.index');
+    Route::get('/orders/{id}',       [OrderUIController::class, 'show'])->name('orders.show');
 
     // Monitor
     Route::get('/monitor/queues',    [MonitorController::class, 'index'])->name('monitor.queues');

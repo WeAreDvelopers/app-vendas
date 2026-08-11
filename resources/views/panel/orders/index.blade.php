@@ -38,7 +38,7 @@
         @forelse($orders as $o)
           <tr>
             <td>{{ $o->id }}</td>
-            <td>{{ $o->ml_order_id }}</td>
+            <td><a href="{{ route('panel.orders.show', $o->id) }}">{{ $o->ml_order_id }}</a></td>
             <td>{{ $o->buyer_nickname ?? '—' }}</td>
             <td>{{ $o->items_count }}</td>
             <td>{{ $o->currency ?? 'BRL' }} {{ number_format((float) $o->total_amount, 2, ',', '.') }}</td>

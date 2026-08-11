@@ -24,4 +24,11 @@ class OrderUIController extends Controller {
 
         return view('panel.orders.index', compact('orders', 'statuses'));
     }
+
+    public function show(int $id) {
+        // findOrFail + CompanyScope global → 404 para pedido de outra empresa.
+        $order = Order::with('items.product')->findOrFail($id);
+
+        return view('panel.orders.show', compact('order'));
+    }
 }
