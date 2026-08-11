@@ -124,6 +124,7 @@ class IntegrationController extends Controller
                 ],
                 [
                     'active' => true,
+                    'ml_user_id' => !empty($data['user_id']) ? (string) $data['user_id'] : null,
                     'credentials' => [
                         'access_token' => $data['access_token'],
                         'refresh_token' => $data['refresh_token'],

@@ -11,6 +11,7 @@ class CompanyIntegration extends Model
     protected $fillable = [
         'company_id',
         'integration_type',
+        'ml_user_id',
         'active',
         'credentials',
         'settings',
