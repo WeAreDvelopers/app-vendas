@@ -11,4 +11,11 @@ class Order extends Model
 
     protected $table = 'orders';
     protected $guarded = [];
+
+    protected $casts = [
+        'total_amount' => 'decimal:2',
+        'paid_amount' => 'decimal:2',
+        'date_closed' => 'datetime',
+        'payload' => 'array',
+    ];
 }
