@@ -16,6 +16,7 @@ class OrderIngestionService
         return DB::transaction(function () use ($companyId, $mlOrder, $mlOrderId) {
             $order = Order::withoutCompanyScope()
                 ->firstOrNew(['company_id' => $companyId, 'ml_order_id' => $mlOrderId]);
+            $isNew = !$order->exists;
 
             $order->company_id = $companyId;
             $order->ml_order_id = $mlOrderId;
@@ -57,7 +58,9 @@ class OrderIngestionService
                 $oi->save();
             }
 
-            $this->notify($companyId, $order);
+            if ($isNew) {
+                $this->notify($companyId, $order);
+            }
 
             return $order;
         });
