@@ -5,6 +5,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\ImportSupplierFile;
 use App\Jobs\ProcessProductWithAI;
 use App\Models\ImportError;
+use App\Models\Product;
 use App\Models\ProductRaw;
 use App\Models\Supplier;
 use App\Models\SupplierImport;
@@ -225,5 +226,59 @@ class ImportUIController extends Controller {
             \Log::error("Erro ao excluir item {$itemId}: " . $e->getMessage());
             return back()->with('error', 'Erro ao excluir item: ' . $e->getMessage());
         }
+    }
+
+    public function convertWithoutAI(Request $r, int $importId, int $itemId)
+    {
+        $r->validate([
+            'description' => 'nullable|string',
+            'stock' => 'nullable|integer|min:0',
+        ]);
+
+        $import = SupplierImport::findOrFail($importId);
+        $raw = ProductRaw::where('supplier_import_id', $import->id)
+            ->findOrFail($itemId);
+
+        // Idempotência: gate por extra['product_id'] (o enum de products_raw NÃO tem 'ai_processed').
+        $extra = $raw->extra ?? [];
+        if (isset($extra['product_id'])) {
+            return response()->json(['ok' => false, 'error' => 'Este produto já foi convertido', 'product_id' => $extra['product_id']], 400);
+        }
+
+        $description = $r->input('description') ?: $this->basicDescription($raw);
+
+        $product = Product::create([
+            'product_raw_id' => $raw->id,
+            'sku' => $raw->sku,
+            'ean' => $raw->ean,
+            'name' => $raw->name,
+            'brand' => $raw->brand,
+            'description' => $description,
+            'price' => $raw->sale_price,
+            'cost_price' => $raw->cost_price,
+            'status' => 'ready',
+            'stock' => $r->input('stock', 0),
+            // products.attributes é coluna json SEM cast no model Product → gravar string JSON.
+            'attributes' => json_encode(['ai_generated' => false, 'manual_conversion' => true, 'source' => 'import']),
+        ]);
+
+        $extra['product_id'] = $product->id;
+        $extra['converted_without_ai'] = true;
+        $extra['converted_at'] = now()->toIso8601String();
+        // products_raw.status enum válido: raw|normalized|enriched|ready.
+        $raw->update(['status' => 'ready', 'extra' => $extra]);
+
+        return response()->json(['ok' => true, 'product_id' => $product->id, 'message' => 'Produto convertido com sucesso sem IA']);
+    }
+
+    private function basicDescription(ProductRaw $raw): string
+    {
+        $parts = array_filter([
+            $raw->brand ? "Marca: {$raw->brand}" : null,
+            $raw->name,
+            $raw->sku ? "SKU: {$raw->sku}" : null,
+            $raw->ean ? "EAN: {$raw->ean}" : null,
+        ]);
+        return implode("\n", $parts) ?: 'Produto sem descrição';
     }
 }

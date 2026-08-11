@@ -240,15 +240,13 @@ document.getElementById('convertWithoutAI').addEventListener('click', function()
   // Função para processar cada produto
   async function convertProduct(productId) {
     try {
-      const response = await fetch('/import/convert-without-ai', {
+      const response = await fetch(`{{ url('/panel/imports/'.$imp->id.'/items') }}/${productId}/convert`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
         },
-        body: JSON.stringify({
-          product_raw_id: productId
-        })
+        body: JSON.stringify({})
       });
 
       const data = await response.json();

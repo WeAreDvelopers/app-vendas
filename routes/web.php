@@ -9,7 +9,6 @@ use App\Http\Controllers\Panel\ListingUIController;
 use App\Http\Controllers\Panel\OrderUIController;
 use App\Http\Controllers\Panel\SupplierController;
 use App\Http\Controllers\MonitorController;
-use App\Http\Controllers\ImportController;
 
 // Authentication routes
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
@@ -61,6 +60,7 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::get('/imports/{id}/errors', [ImportUIController::class, 'errors'])->name('imports.errors');
     Route::get('/imports/{id}/errors/export', [ImportUIController::class, 'exportErrors'])->name('imports.errors.export');
     Route::delete('/imports/{importId}/items/{itemId}', [ImportUIController::class, 'destroyItem'])->name('imports.items.destroy');
+    Route::post('/imports/{importId}/items/{itemId}/convert', [ImportUIController::class, 'convertWithoutAI'])->name('imports.items.convert');
 
     // Products, Listings, Orders
     Route::get('/products',          [ProductUIController::class, 'index'])->name('products.index');
@@ -107,6 +107,3 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::post('/notifications/read-all',    [NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
     Route::delete('/notifications/{id}',      [NotificationController::class, 'destroy'])->name('notifications.destroy');
 });
-
-Route::post('/import/supplier', [ImportController::class,'store']);
-Route::post('/import/convert-without-ai', [ImportController::class,'convertWithoutAI']); 
