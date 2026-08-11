@@ -32,6 +32,11 @@ class IntegrationController extends Controller
         $mlAppId = $this->getSetting($company->id, 'mercado_livre', 'app_id');
         $mlSecretKey = $this->getSetting($company->id, 'mercado_livre', 'secret_key');
 
+        // Opções manuais do Mercado Livre
+        $mlAutoPrint = IntegrationSettings::getMercadoLivreAutoPrint($company->id);
+        $mlLabelMode = IntegrationSettings::getMercadoLivreLabelMode($company->id);
+        $printAgentToken = $company->print_agent_token;
+
         return view('panel.integrations.index', compact(
             'company',
             'mlIntegration',
@@ -39,7 +44,10 @@ class IntegrationController extends Controller
             'driveIntegration',
             'driveConnected',
             'mlAppId',
-            'mlSecretKey'
+            'mlSecretKey',
+            'mlAutoPrint',
+            'mlLabelMode',
+            'printAgentToken'
         ));
     }
 
@@ -424,6 +432,38 @@ class IntegrationController extends Controller
                 ->withInput()
                 ->with('error', 'Erro ao salvar credenciais: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Salva opções manuais do Mercado Livre (impressão automática, modo de etiqueta).
+     */
+    public function mercadoLivreSaveSettings(Request $request)
+    {
+        $data = $request->validate([
+            'auto_print' => 'nullable|boolean',
+            'label_mode' => 'required|in:auto,simple',
+        ]);
+
+        $companyId = $request->user()->current_company_id;
+
+        $this->saveSetting($companyId, 'mercado_livre', 'auto_print', $request->boolean('auto_print') ? '1' : '0');
+        $this->saveSetting($companyId, 'mercado_livre', 'label_mode', $data['label_mode']);
+
+        return redirect()->route('panel.integrations.index')
+            ->with('ok', 'Opções do Mercado Livre salvas com sucesso!');
+    }
+
+    /**
+     * Gera (ou regenera) o token do agente de impressão da empresa.
+     */
+    public function mercadoLivreGeneratePrintToken(Request $request)
+    {
+        $company = $request->user()->getCurrentCompany();
+        $company->print_agent_token = \Illuminate\Support\Str::random(48);
+        $company->save();
+
+        return redirect()->route('panel.integrations.index')
+            ->with('ok', 'Novo token do agente de impressão gerado.');
     }
 
     /**

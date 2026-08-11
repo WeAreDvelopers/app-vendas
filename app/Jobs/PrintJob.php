@@ -1,6 +1,7 @@
 <?php
 namespace App\Jobs;
 
+use App\Helpers\IntegrationSettings;
 use App\Services\MercadoLivreService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -23,7 +24,7 @@ class PrintJob implements ShouldQueue {
   ) {}
 
   public function handle(MercadoLivreService $ml): void {
-    $mode = config('services.mercado_livre.label_mode', 'auto');
+    $mode = IntegrationSettings::getMercadoLivreLabelMode($this->companyId);
 
     $zpl = null;
 

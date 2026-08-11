@@ -81,4 +81,28 @@ class IntegrationSettings
     {
         return self::get($companyId, 'mercado_livre', 'secret_key', config('services.mercado_livre.secret_key'));
     }
+
+    /**
+     * Impressão automática de etiqueta ligada para a empresa (fallback: config global).
+     */
+    public static function getMercadoLivreAutoPrint(int $companyId): bool
+    {
+        $value = self::get($companyId, 'mercado_livre', 'auto_print');
+
+        if ($value === null) {
+            return (bool) config('services.mercado_livre.auto_print', true);
+        }
+
+        return in_array($value, ['1', 'true', 'on'], true);
+    }
+
+    /**
+     * Modo da etiqueta ('auto'|'simple') da empresa (fallback: config global).
+     */
+    public static function getMercadoLivreLabelMode(int $companyId): string
+    {
+        $mode = self::get($companyId, 'mercado_livre', 'label_mode', config('services.mercado_livre.label_mode', 'auto'));
+
+        return in_array($mode, ['auto', 'simple'], true) ? $mode : 'auto';
+    }
 }

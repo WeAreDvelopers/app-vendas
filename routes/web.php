@@ -40,6 +40,8 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::post('/integrations/mercado-livre/disconnect', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreDisconnect'])->name('integrations.ml.disconnect');
     Route::post('/integrations/mercado-livre/reconnect', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreReconnect'])->name('integrations.ml.reconnect');
     Route::post('/integrations/mercado-livre/save-credentials', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreSaveCredentials'])->name('integrations.ml.save-credentials');
+    Route::post('/integrations/mercado-livre/settings', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreSaveSettings'])->name('integrations.ml.settings');
+    Route::post('/integrations/mercado-livre/print-token', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreGeneratePrintToken'])->name('integrations.ml.print-token');
 
     // Google Drive Integration
     Route::get('/integrations/google-drive/connect', [\App\Http\Controllers\Panel\IntegrationController::class, 'googleDriveConnect'])->name('integrations.drive.connect');

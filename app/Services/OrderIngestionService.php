@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Helpers\IntegrationSettings;
 use App\Jobs\PrintJob;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -63,7 +64,7 @@ class OrderIngestionService
                 $this->notify($companyId, $order);
 
                 // Impressão automática de etiqueta (só em venda nova, não no backfill).
-                if (config('services.mercado_livre.auto_print') && $order->shipment_id) {
+                if (IntegrationSettings::getMercadoLivreAutoPrint($companyId) && $order->shipment_id) {
                     PrintJob::dispatch($order->id, $companyId, (string) $order->shipment_id)
                         ->afterCommit();
                 }
