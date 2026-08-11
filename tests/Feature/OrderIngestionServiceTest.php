@@ -61,4 +61,20 @@ class OrderIngestionServiceTest extends TestCase
         $this->assertSame(1, Order::where('ml_order_id', 'ML-100')->count());
         $this->assertSame(2, OrderItem::where('order_id', $order->id)->count());
     }
+
+    public function test_ingests_status_outside_legacy_enum(): void
+    {
+        // O status vinha como ENUM restrito; agora é string. Um status real do ML
+        // fora da lista antiga (ex.: 'payment_required') deve persistir sem erro.
+        $a = $this->makeCompany('A');
+
+        $svc = app(OrderIngestionService::class);
+        $order = $svc->ingest($a->id, [
+            'id' => 'ML-STATUS',
+            'status' => 'payment_required',
+            'order_items' => [],
+        ]);
+
+        $this->assertSame('payment_required', $order->fresh()->status);
+    }
 }
