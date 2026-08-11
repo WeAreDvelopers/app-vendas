@@ -1305,4 +1305,34 @@ class MercadoLivreService
 
         return $response->json();
     }
+
+    /**
+     * Busca a etiqueta de envio (ZPL) do Mercado Envios para um shipment.
+     * Retorna o conteúdo ZPL bruto ou null se indisponível.
+     */
+    public function getShipmentLabel(int $companyId, string $shipmentId): ?string
+    {
+        $token = $this->getActiveTokenFromIntegration($companyId);
+        if (!$token || empty($token->access_token)) {
+            Log::warning('getShipmentLabel: sem token para empresa', ['company_id' => $companyId]);
+            return null;
+        }
+
+        $response = Http::withToken($token->access_token)
+            ->get('https://api.mercadolibre.com/shipment_labels', [
+                'shipment_ids' => $shipmentId,
+                'response_type' => 'zpl2',
+            ]);
+
+        if (!$response->successful()) {
+            Log::warning('getShipmentLabel: etiqueta indisponível', [
+                'company_id' => $companyId, 'shipment_id' => $shipmentId, 'status' => $response->status(),
+            ]);
+            return null;
+        }
+
+        $body = $response->body();
+
+        return $body !== '' ? $body : null;
+    }
 }

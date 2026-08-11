@@ -61,6 +61,12 @@ return [
         // como .../api/webhooks/mercado-livre?secret=XXXX (ou envie header
         // X-Webhook-Secret). Vazio = validação desligada (aceita qualquer origem).
         'webhook_secret' => env('MERCADO_LIVRE_WEBHOOK_SECRET'),
+
+        // Impressão automática de etiqueta ao receber uma venda nova.
+        'auto_print' => env('MERCADO_LIVRE_AUTO_PRINT', true),
+        // 'auto'   = tenta a etiqueta real do ML e, se indisponível, usa a simples.
+        // 'simple' = sempre a etiqueta simples (número do pedido/comprador).
+        'label_mode' => env('MERCADO_LIVRE_LABEL_MODE', 'auto'),
     ],
 
 ];

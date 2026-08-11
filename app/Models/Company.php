@@ -14,7 +14,8 @@ class Company extends Model
         'email',
         'phone',
         'active',
-        'settings'
+        'settings',
+        'print_agent_token',
     ];
 
     protected $casts = [
