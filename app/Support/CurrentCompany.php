@@ -13,7 +13,11 @@ class CurrentCompany
 
     public function id(): ?int
     {
-        return $this->id;
+        if ($this->id !== null) {
+            return $this->id;
+        }
+
+        return auth()->check() ? auth()->user()->current_company_id : null;
     }
 
     public function clear(): void
