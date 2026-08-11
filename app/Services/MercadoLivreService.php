@@ -1246,4 +1246,28 @@ class MercadoLivreService
             }
         }
     }
+
+    /**
+     * Busca um pedido (order) da API do Mercado Livre para a empresa informada.
+     */
+    public function getOrder(int $companyId, string $orderId): ?array
+    {
+        $token = $this->getActiveTokenFromIntegration($companyId);
+        if (!$token || empty($token->access_token)) {
+            Log::warning('getOrder: sem token para empresa', ['company_id' => $companyId]);
+            return null;
+        }
+
+        $response = Http::withToken($token->access_token)
+            ->get("https://api.mercadolibre.com/orders/{$orderId}");
+
+        if (!$response->successful()) {
+            Log::error('getOrder: falha ao buscar pedido', [
+                'order_id' => $orderId, 'status' => $response->status(),
+            ]);
+            return null;
+        }
+
+        return $response->json();
+    }
 }
