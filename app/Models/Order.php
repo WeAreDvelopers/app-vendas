@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToCompany;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Order extends Model
 {
@@ -18,4 +19,9 @@ class Order extends Model
         'date_closed' => 'datetime',
         'payload' => 'array',
     ];
+
+    public function items(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
+    }
 }
