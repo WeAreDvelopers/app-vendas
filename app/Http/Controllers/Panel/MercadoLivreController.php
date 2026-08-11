@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Services\MercadoLivreService;
 use App\Jobs\PublishListingToML;
+use App\Models\Product;
 
 class MercadoLivreController extends Controller
 {
@@ -125,8 +126,7 @@ class MercadoLivreController extends Controller
      */
     public function prepare(int $productId)
     {
-        $product = DB::table('products')->find($productId);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($productId);
 
         // Busca imagens do produto
         $images = DB::table('product_images')
@@ -188,8 +188,7 @@ class MercadoLivreController extends Controller
     public function saveDraft(Request $request, int $productId)
     {
        
-        $product = DB::table('products')->find($productId);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($productId);
 
         try {
             $validated = $request->validate([
@@ -295,8 +294,7 @@ class MercadoLivreController extends Controller
      */
     public function publish(int $productId)
     {
-        $product = DB::table('products')->find($productId);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($productId);
 
         $listing = DB::table('mercado_livre_listings')
             ->where('product_id', $productId)
@@ -390,8 +388,8 @@ class MercadoLivreController extends Controller
     {
       
         // try {
-            // Primeiro salva o rascunho
-            $product = DB::table('products')->find($productId);
+            // Primeiro salva o rascunho (escopado por empresa)
+            $product = Product::find($productId);
             if (!$product) {
                 return response()->json(['error' => 'Produto não encontrado'], 404);
             }
@@ -583,6 +581,10 @@ class MercadoLivreController extends Controller
      */
     public function checkPublishStatus(int $productId)
     {
+        // Garante que o produto pertence à empresa atual antes de expor o
+        // status do anúncio (evita leitura cross-company por product_id).
+        Product::findOrFail($productId);
+
         $listing = DB::table('mercado_livre_listings')
             ->where('product_id', $productId)
             ->first();
