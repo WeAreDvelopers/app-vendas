@@ -99,26 +99,26 @@ class WebhookController extends Controller
     }
 
     /**
-     * Valida se a requisição vem de um IP do Mercado Livre
+     * Valida a origem da notificação por segredo compartilhado.
+     *
+     * O Mercado Livre não assina os webhooks (sem HMAC), então protegemos o
+     * endpoint com um segredo configurado no próprio callback URL:
+     *   .../api/webhooks/mercado-livre?secret=XXXX
+     * ou via header X-Webhook-Secret. Se nenhum segredo estiver configurado,
+     * a validação fica desligada (compatível com o setup atual).
      */
     private function isValidMLSource(Request $request): bool
     {
-        $ip = $request->ip();
+        $expected = config('services.mercado_livre.webhook_secret');
 
-        // IPs conhecidos do Mercado Livre (adicione conforme necessário)
-        $allowedIPs = [
-            '209.225.49.0/24',  // Range do ML
-            '200.221.0.0/16',   // Range do ML
-            '127.0.0.1',        // Localhost para testes
-            '::1'               // IPv6 localhost
-        ];
+        // Sem segredo configurado → não valida origem.
+        if (empty($expected)) {
+            return true;
+        }
 
-        // Em produção, você pode validar também por user-agent
-        // ou por assinatura HMAC se o ML fornecer
+        $provided = $request->header('X-Webhook-Secret') ?? $request->query('secret');
 
-        // Por enquanto, aceita todas as requisições
-        // TODO: Implementar validação mais rigorosa em produção
-        return true;
+        return is_string($provided) && hash_equals((string) $expected, $provided);
     }
 
     /**

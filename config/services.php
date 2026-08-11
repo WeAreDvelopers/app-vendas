@@ -57,6 +57,10 @@ return [
         'environment' => env('MERCADO_LIVRE_ENVIRONMENT', 'production'),
         'api_url' => 'https://api.mercadolibre.com',
         'auth_url' => 'https://auth.mercadolivre.com.br/authorization',
+        // Segredo compartilhado para validar o webhook. Configure o callback no ML
+        // como .../api/webhooks/mercado-livre?secret=XXXX (ou envie header
+        // X-Webhook-Secret). Vazio = validação desligada (aceita qualquer origem).
+        'webhook_secret' => env('MERCADO_LIVRE_WEBHOOK_SECRET'),
     ],
 
 ];
