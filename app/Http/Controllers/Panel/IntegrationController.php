@@ -1,0 +1,511 @@
+<?php
+
+namespace App\Http\Controllers\Panel;
+
+use App\Http\Controllers\Controller;
+use App\Models\CompanyIntegration;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use App\Helpers\IntegrationSettings;
+
+class IntegrationController extends Controller
+{
+    /**
+     * Tela de integrações
+     */
+    public function index(Request $request)
+    {
+        $company = $request->user()->getCurrentCompany();
+
+        // Busca todas as integrações da empresa
+        $integrations = $company->integrations()->get()->keyBy('integration_type');
+
+        // Integração do Mercado Livre
+        $mlIntegration = $integrations->get('mercado_livre');
+        $mlConnected = $mlIntegration && $mlIntegration->isConnected();
+
+        // Integração do Google Drive
+        $driveIntegration = $integrations->get('google_drive');
+        $driveConnected = $driveIntegration && $driveIntegration->isConnected();
+
+        // Busca credenciais do Mercado Livre
+        $mlAppId = $this->getSetting($company->id, 'mercado_livre', 'app_id');
+        $mlSecretKey = $this->getSetting($company->id, 'mercado_livre', 'secret_key');
+
+        // Opções manuais do Mercado Livre
+        $mlAutoPrint = IntegrationSettings::getMercadoLivreAutoPrint($company->id);
+        $mlLabelMode = IntegrationSettings::getMercadoLivreLabelMode($company->id);
+        $printAgentToken = $company->print_agent_token;
+
+        return view('panel.integrations.index', compact(
+            'company',
+            'mlIntegration',
+            'mlConnected',
+            'driveIntegration',
+            'driveConnected',
+            'mlAppId',
+            'mlSecretKey',
+            'mlAutoPrint',
+            'mlLabelMode',
+            'printAgentToken'
+        ));
+    }
+
+    /**
+     * Inicia conexão com Mercado Livre (OAuth)
+     */
+    public function mercadoLivreConnect(Request $request)
+    {
+        $companyId = $request->user()->current_company_id;
+
+        // Busca App ID do banco de dados (ou fallback para .env)
+        $appId = IntegrationSettings::getMercadoLivreAppId($companyId);
+
+        if (!$appId) {
+            return redirect()->route('panel.integrations.index')
+                ->with('error', 'Configure suas credenciais do Mercado Livre antes de conectar. Clique em "Configurar API".');
+        }
+
+        $redirectUri = route('panel.integrations.ml.callback');
+
+        // Salva company_id na sessão para recuperar no callback
+        session(['ml_oauth_company_id' => $companyId]);
+
+        $authUrl = "https://auth.mercadolivre.com.br/authorization?response_type=code&client_id={$appId}&redirect_uri={$redirectUri}";
+
+        return redirect($authUrl);
+    }
+
+    /**
+     * Callback OAuth do Mercado Livre
+     */
+    public function mercadoLivreCallback(Request $request)
+    {
+        $code = $request->get('code');
+
+        if (!$code) {
+            return redirect()->route('panel.integrations.index')
+                ->with('error', 'Erro ao conectar com Mercado Livre: código não fornecido.');
+        }
+
+        // Recupera company_id da sessão
+        $companyId = session('ml_oauth_company_id') ?? auth()->user()->current_company_id;
+        session()->forget('ml_oauth_company_id');
+
+        // Busca credenciais do banco de dados
+        $appId = IntegrationSettings::getMercadoLivreAppId($companyId);
+        $secretKey = IntegrationSettings::getMercadoLivreSecretKey($companyId);
+
+        if (!$appId || !$secretKey) {
+            return redirect()->route('panel.integrations.index')
+                ->with('error', 'Credenciais do Mercado Livre não encontradas. Configure-as primeiro.');
+        }
+
+        try {
+            // Troca code por access_token
+            $response = Http::asForm()->post('https://api.mercadolibre.com/oauth/token', [
+                'grant_type' => 'authorization_code',
+                'client_id' => $appId,
+                'client_secret' => $secretKey,
+                'code' => $code,
+                'redirect_uri' => route('panel.integrations.ml.callback')
+            ]);
+
+            if (!$response->successful()) {
+                throw new \Exception('Falha ao obter token: ' . $response->body());
+            }
+
+            $data = $response->json();
+
+            // Busca dados do usuário do ML
+            $userResponse = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $data['access_token']
+            ])->get('https://api.mercadolibre.com/users/me');
+
+            $userData = $userResponse->json();
+
+            // Cria ou atualiza integração
+            $integration = CompanyIntegration::updateOrCreate(
+                [
+                    'company_id' => $companyId,
+                    'integration_type' => 'mercado_livre'
+                ],
+                [
+                    'active' => true,
+                    'ml_user_id' => !empty($data['user_id']) ? (string) $data['user_id'] : null,
+                    'credentials' => [
+                        'access_token' => $data['access_token'],
+                        'refresh_token' => $data['refresh_token'],
+                        'user_id' => $data['user_id'],
+                        'nickname' => $userData['nickname'] ?? null,
+                    ],
+                    'settings' => [
+                        'site_id' => $userData['site_id'] ?? 'MLB',
+                    ],
+                    'connected_at' => now(),
+                    'expires_at' => now()->addSeconds($data['expires_in'] ?? 21600)
+                ]
+            );
+
+            return redirect()->route('panel.integrations.index')
+                ->with('ok', 'Mercado Livre conectado com sucesso!');
+
+        } catch (\Exception $e) {
+            \Log::error('Erro no OAuth ML: ' . $e->getMessage());
+
+            return redirect()->route('panel.integrations.index')
+                ->with('error', 'Erro ao conectar: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Desconecta Mercado Livre
+     */
+    public function mercadoLivreDisconnect(Request $request)
+    {
+        $companyId = $request->user()->current_company_id;
+
+        $integration = CompanyIntegration::where('company_id', $companyId)
+            ->where('integration_type', 'mercado_livre')
+            ->first();
+
+        if ($integration) {
+            $integration->update([
+                'active' => false,
+                'credentials' => null
+            ]);
+        }
+
+        return back()->with('ok', 'Mercado Livre desconectado.');
+    }
+
+    /**
+     * Reconecta Mercado Livre (mesmo que connect, mas com mensagem diferente)
+     */
+    public function mercadoLivreReconnect(Request $request)
+    {
+        return $this->mercadoLivreConnect($request);
+    }
+
+    /**
+     * Atualiza token do Mercado Livre (refresh token)
+     */
+    public function mercadoLivreRefreshToken(CompanyIntegration $integration)
+    {
+        try {
+            $credentials = $integration->getDecryptedCredentials();
+
+            if (!$credentials || !isset($credentials['refresh_token'])) {
+                throw new \Exception('Refresh token não encontrado');
+            }
+
+            // Busca credenciais do banco de dados
+            $appId = IntegrationSettings::getMercadoLivreAppId($integration->company_id);
+            $secretKey = IntegrationSettings::getMercadoLivreSecretKey($integration->company_id);
+
+            if (!$appId || !$secretKey) {
+                throw new \Exception('Credenciais do Mercado Livre não encontradas');
+            }
+
+            $response = Http::asForm()->post('https://api.mercadolibre.com/oauth/token', [
+                'grant_type' => 'refresh_token',
+                'client_id' => $appId,
+                'client_secret' => $secretKey,
+                'refresh_token' => $credentials['refresh_token']
+            ]);
+
+            if (!$response->successful()) {
+                throw new \Exception('Falha ao renovar token');
+            }
+
+            $data = $response->json();
+
+            $integration->update([
+                'credentials' => [
+                    'access_token' => $data['access_token'],
+                    'refresh_token' => $data['refresh_token'],
+                    'user_id' => $credentials['user_id'],
+                    'nickname' => $credentials['nickname'] ?? null,
+                ],
+                'expires_at' => now()->addSeconds($data['expires_in'] ?? 21600)
+            ]);
+
+            return true;
+
+        } catch (\Exception $e) {
+            \Log::error('Erro ao renovar token ML: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Inicia conexão com Google Drive (OAuth)
+     */
+    public function googleDriveConnect(Request $request)
+    {
+        $clientId = env('GOOGLE_CLIENT_ID');
+        $redirectUri = route('panel.integrations.drive.callback');
+
+        // Salva company_id na sessão
+        session(['drive_oauth_company_id' => $request->user()->current_company_id]);
+
+        $scopes = [
+            'https://www.googleapis.com/auth/drive.readonly',
+            'https://www.googleapis.com/auth/userinfo.email',
+            'https://www.googleapis.com/auth/userinfo.profile'
+        ];
+
+        $authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' . http_build_query([
+            'client_id' => $clientId,
+            'redirect_uri' => $redirectUri,
+            'response_type' => 'code',
+            'scope' => implode(' ', $scopes),
+            'access_type' => 'offline',
+            'prompt' => 'consent'
+        ]);
+
+        return redirect($authUrl);
+    }
+
+    /**
+     * Callback OAuth do Google Drive
+     */
+    public function googleDriveCallback(Request $request)
+    {
+        $code = $request->get('code');
+
+        if (!$code) {
+            return redirect()->route('panel.integrations.index')
+                ->with('error', 'Erro ao conectar com Google Drive: código não fornecido.');
+        }
+
+        try {
+            // Troca code por access_token
+            $response = Http::asForm()->post('https://oauth2.googleapis.com/token', [
+                'grant_type' => 'authorization_code',
+                'client_id' => env('GOOGLE_CLIENT_ID'),
+                'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+                'code' => $code,
+                'redirect_uri' => route('panel.integrations.drive.callback')
+            ]);
+
+            if (!$response->successful()) {
+                throw new \Exception('Falha ao obter token: ' . $response->body());
+            }
+
+            $data = $response->json();
+
+            // Recupera company_id da sessão
+            $companyId = session('drive_oauth_company_id') ?? auth()->user()->current_company_id;
+            session()->forget('drive_oauth_company_id');
+
+            // Busca dados do usuário do Google
+            $userResponse = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $data['access_token']
+            ])->get('https://www.googleapis.com/oauth2/v2/userinfo');
+
+            $userData = $userResponse->json();
+
+            // Cria ou atualiza integração
+            $integration = CompanyIntegration::updateOrCreate(
+                [
+                    'company_id' => $companyId,
+                    'integration_type' => 'google_drive'
+                ],
+                [
+                    'active' => true,
+                    'credentials' => [
+                        'access_token' => $data['access_token'],
+                        'refresh_token' => $data['refresh_token'] ?? null,
+                        'email' => $userData['email'] ?? null,
+                        'name' => $userData['name'] ?? null,
+                    ],
+                    'connected_at' => now(),
+                    'expires_at' => now()->addSeconds($data['expires_in'] ?? 3600)
+                ]
+            );
+
+            return redirect()->route('panel.integrations.index')
+                ->with('ok', 'Google Drive conectado com sucesso!');
+
+        } catch (\Exception $e) {
+            \Log::error('Erro no OAuth Google Drive: ' . $e->getMessage());
+
+            return redirect()->route('panel.integrations.index')
+                ->with('error', 'Erro ao conectar: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Desconecta Google Drive
+     */
+    public function googleDriveDisconnect(Request $request)
+    {
+        $companyId = $request->user()->current_company_id;
+
+        $integration = CompanyIntegration::where('company_id', $companyId)
+            ->where('integration_type', 'google_drive')
+            ->first();
+
+        if ($integration) {
+            $integration->update([
+                'active' => false,
+                'credentials' => null
+            ]);
+        }
+
+        return back()->with('ok', 'Google Drive desconectado.');
+    }
+
+    /**
+     * Atualiza token do Google Drive (refresh token)
+     */
+    public function googleDriveRefreshToken(CompanyIntegration $integration)
+    {
+        try {
+            $credentials = $integration->getDecryptedCredentials();
+
+            if (!$credentials || !isset($credentials['refresh_token'])) {
+                throw new \Exception('Refresh token não encontrado');
+            }
+
+            $response = Http::asForm()->post('https://oauth2.googleapis.com/token', [
+                'grant_type' => 'refresh_token',
+                'client_id' => env('GOOGLE_CLIENT_ID'),
+                'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+                'refresh_token' => $credentials['refresh_token']
+            ]);
+
+            if (!$response->successful()) {
+                throw new \Exception('Falha ao renovar token');
+            }
+
+            $data = $response->json();
+
+            $integration->update([
+                'credentials' => [
+                    'access_token' => $data['access_token'],
+                    'refresh_token' => $credentials['refresh_token'],
+                    'email' => $credentials['email'] ?? null,
+                    'name' => $credentials['name'] ?? null,
+                ],
+                'expires_at' => now()->addSeconds($data['expires_in'] ?? 3600)
+            ]);
+
+            return true;
+
+        } catch (\Exception $e) {
+            \Log::error('Erro ao renovar token Google Drive: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Salva credenciais do Mercado Livre
+     */
+    public function mercadoLivreSaveCredentials(Request $request)
+    {
+        $request->validate([
+            'ml_app_id' => 'required|string|max:100',
+            'ml_secret_key' => 'required|string|max:255',
+        ], [
+            'ml_app_id.required' => 'O App ID é obrigatório',
+            'ml_secret_key.required' => 'A Secret Key é obrigatória',
+        ]);
+
+        $companyId = $request->user()->current_company_id;
+
+        try {
+            // Salva App ID
+            $this->saveSetting($companyId, 'mercado_livre', 'app_id', $request->ml_app_id);
+
+            // Salva Secret Key (criptografada)
+            $this->saveSetting($companyId, 'mercado_livre', 'secret_key', $request->ml_secret_key, true);
+
+            return redirect()->route('panel.integrations.index')
+                ->with('ok', 'Credenciais do Mercado Livre salvas com sucesso!');
+
+        } catch (\Exception $e) {
+            \Log::error('Erro ao salvar credenciais ML: ' . $e->getMessage());
+
+            return back()
+                ->withInput()
+                ->with('error', 'Erro ao salvar credenciais: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Salva opções manuais do Mercado Livre (impressão automática, modo de etiqueta).
+     */
+    public function mercadoLivreSaveSettings(Request $request)
+    {
+        $data = $request->validate([
+            'auto_print' => 'nullable|boolean',
+            'label_mode' => 'required|in:auto,simple',
+        ]);
+
+        $companyId = $request->user()->current_company_id;
+
+        $this->saveSetting($companyId, 'mercado_livre', 'auto_print', $request->boolean('auto_print') ? '1' : '0');
+        $this->saveSetting($companyId, 'mercado_livre', 'label_mode', $data['label_mode']);
+
+        return redirect()->route('panel.integrations.index')
+            ->with('ok', 'Opções do Mercado Livre salvas com sucesso!');
+    }
+
+    /**
+     * Gera (ou regenera) o token do agente de impressão da empresa.
+     */
+    public function mercadoLivreGeneratePrintToken(Request $request)
+    {
+        $company = $request->user()->getCurrentCompany();
+        $company->print_agent_token = \Illuminate\Support\Str::random(48);
+        $company->save();
+
+        return redirect()->route('panel.integrations.index')
+            ->with('ok', 'Novo token do agente de impressão gerado.');
+    }
+
+    /**
+     * Salva uma configuração
+     */
+    private function saveSetting(int $companyId, string $platform, string $key, ?string $value, bool $encrypt = false): void
+    {
+        if ($value === null) {
+            return;
+        }
+
+        $settingValue = $encrypt ? encrypt($value) : $value;
+
+        \DB::table('integration_settings')->updateOrInsert(
+            [
+                'company_id' => $companyId,
+                'platform' => $platform,
+                'key' => $key
+            ],
+            [
+                'value' => $settingValue,
+                'is_encrypted' => $encrypt,
+                'updated_at' => now()
+            ]
+        );
+    }
+
+    /**
+     * Busca uma configuração
+     */
+    private function getSetting(int $companyId, string $platform, string $key): ?string
+    {
+        $setting = \DB::table('integration_settings')
+            ->where('company_id', $companyId)
+            ->where('platform', $platform)
+            ->where('key', $key)
+            ->first();
+
+        if (!$setting) {
+            return null;
+        }
+
+        return $setting->is_encrypted ? decrypt($setting->value) : $setting->value;
+    }
+}

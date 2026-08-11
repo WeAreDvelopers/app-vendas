@@ -25,7 +25,7 @@ class ImportSupplierFile implements ShouldQueue {
   public function __construct(public int $importId) {}
 
   public function handle(): void {
-    $import = SupplierImport::with('supplier.mapping')->find($this->importId);
+    $import = SupplierImport::withoutCompanyScope()->with('supplier.mapping')->find($this->importId);
     if (!$import) return;
 
     $import->update(['status' => 'processing']);
@@ -105,6 +105,7 @@ class ImportSupplierFile implements ShouldQueue {
         ]);
 
         DB::table('products_raw')->insert([
+          'company_id' => $import->company_id,
           'supplier_import_id' => $this->importId,
           'sku' => $row['sku'] ?? null,
           'ean' => $row['ean'] ?? null,
@@ -119,7 +120,7 @@ class ImportSupplierFile implements ShouldQueue {
       }
 
       // Salva erros no banco
-      $this->saveErrors();
+      $this->saveErrors($import);
 
       $import->update([
         'status' => 'done',
@@ -147,12 +148,6 @@ class ImportSupplierFile implements ShouldQueue {
         );
       }
 
-      // Dispatcha jobs de enriquecimento apenas para linhas válidas
-      foreach ($rows as $row) {
-        if (!empty($row['sku'])) {
-          \App\Jobs\EnrichProduct::dispatch($this->importId, $row['sku']);
-        }
-      }
     } catch (\Exception $e) {
       $import->update([
         'status' => 'failed',
@@ -236,10 +231,11 @@ class ImportSupplierFile implements ShouldQueue {
     ];
   }
 
-  private function saveErrors(): void
+  private function saveErrors(SupplierImport $import): void
   {
     foreach ($this->errors as $error) {
       ImportError::create([
+        'company_id' => $import->company_id,
         'supplier_import_id' => $this->importId,
         'row_number' => $error['row_number'],
         'error_type' => $error['error_type'],

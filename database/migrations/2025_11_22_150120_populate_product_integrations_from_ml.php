@@ -13,6 +13,12 @@ return new class extends Migration
     {
         // Insere registros de integração para todos os produtos que têm listings no ML
         // (incluindo drafts que ainda não foram publicados)
+        // Usa JSON_OBJECT / ON DUPLICATE KEY / VALUES() — específicos do MySQL.
+        // No-op em outros drivers (ex.: SQLite dos testes; sem dados de ML nesse contexto).
+        if (DB::getDriverName() !== 'mysql') {
+            return;
+        }
+
         DB::statement("
             INSERT INTO product_integrations (product_id, platform, external_id, status, metadata, last_sync_at, published_at, created_at, updated_at)
             SELECT

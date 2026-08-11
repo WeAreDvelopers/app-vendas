@@ -24,3 +24,10 @@ Homestead.yaml
 Thumbs.db
 .claude
 /nul
+test_*
+*.bat
+
+# Scripts ad-hoc e temporários
+check_*.php
+debug_*.php
+temp_*.txt

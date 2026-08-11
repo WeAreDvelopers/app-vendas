@@ -7,6 +7,55 @@
 <div class="row g-3">
   <!-- Coluna Principal -->
   <div class="col-lg-8">
+    <!-- Container para mensagens dinâmicas -->
+    <div id="dynamicMessages"></div>
+
+    <!-- Status da Publicação -->
+    @if($listing && in_array($listing->status, ['queued', 'processing']))
+    <div class="notion-card mb-3" id="publishStatusCard">
+      <div class="d-flex align-items-center">
+        <div class="spinner-border text-primary me-3" role="status">
+          <span class="visually-hidden">Processando...</span>
+        </div>
+        <div class="flex-grow-1">
+          <h6 class="mb-1" id="statusMessage">
+            @if($listing->status === 'queued')
+              <i class="bi bi-clock-history"></i> Na fila para publicação...
+            @else
+              <i class="bi bi-arrow-repeat"></i> Publicando no Mercado Livre...
+            @endif
+          </h6>
+          <small class="text-muted">A página será atualizada automaticamente quando concluir.</small>
+        </div>
+      </div>
+    </div>
+    @endif
+
+    @if($listing && $listing->status === 'active')
+    <div class="notion-card mb-3 border-success">
+      <div class="alert alert-success mb-0">
+        <i class="bi bi-check-circle-fill"></i>
+        <strong>Publicado com sucesso!</strong>
+        @if($listing->ml_id)
+          <br>ID do Anúncio: <strong>{{ $listing->ml_id }}</strong>
+          <a href="https://produto.mercadolivre.com.br/{{ $listing->ml_id }}" target="_blank" class="btn btn-sm btn-success mt-2">
+            <i class="bi bi-box-arrow-up-right"></i> Ver no Mercado Livre
+          </a>
+        @endif
+      </div>
+    </div>
+    @endif
+
+    @if($listing && $listing->status === 'failed')
+    <div class="notion-card mb-3 border-danger">
+      <div class="alert alert-danger mb-0">
+        <i class="bi bi-x-circle-fill"></i>
+        <strong>Falha ao publicar!</strong>
+        <p class="mb-0 mt-2">Ocorreu um erro durante a publicação. Por favor, revise as informações e tente novamente.</p>
+      </div>
+    </div>
+    @endif
+
     <!-- Score de Qualidade -->
     <div class="notion-card mb-3">
       <div class="d-flex justify-content-between align-items-center mb-3">
@@ -73,7 +122,7 @@
     </div>
 
     <!-- Formulário de Configuração -->
-    <form method="POST" action="{{ route('panel.mercado-livre.save-draft', $product->id) }}">
+    <form method="POST" action="{{ route('panel.mercado-livre.save-draft', $product->id) }}" id="form">
       @csrf
 
       <!-- Informações Básicas -->
@@ -416,21 +465,197 @@ document.querySelector('input[name="price"]').addEventListener('input', function
   document.getElementById('previewPrice').textContent = formatted;
 });
 
-// Função para publicar
+// Função para publicar via AJAX
 function publishNow() {
-  if (confirm('Deseja publicar este anúncio no Mercado Livre agora?')) {
-    // Adiciona campo hidden ao formulário para indicar que deve publicar após salvar
-    const mainForm = document.querySelector('form[action*="save-draft"]');
-
-    const publishFlag = document.createElement('input');
-    publishFlag.type = 'hidden';
-    publishFlag.name = 'publish_after_save';
-    publishFlag.value = '1';
-    mainForm.appendChild(publishFlag);
-
-    // Submit do formulário principal (salva rascunho + publica)
-    mainForm.submit();
+  if (!confirm('Deseja publicar este anúncio no Mercado Livre agora?')) {
+    return;
   }
+
+  // Busca o formulário
+  const mainForm = document.getElementById("form");
+
+  if (!mainForm) {
+    console.error('Formulário não encontrado');
+    alert('Erro: Formulário não encontrado. Por favor, recarregue a página.');
+    return;
+  }
+
+  // Serializa todos os dados do formulário
+  const formData = new FormData(mainForm);
+
+  // IMPORTANTE: Garante que todos os campos ml_attr sejam incluídos
+  // Busca todos os inputs e selects com name começando com ml_attr DENTRO do formulário
+  const mlAttrInputs = mainForm.querySelectorAll('input[name^="ml_attr["], select[name^="ml_attr["]');
+
+  console.log(`Encontrados ${mlAttrInputs.length} campos de atributos ML`);
+
+  mlAttrInputs.forEach(input => {
+    const fieldName = input.name;
+    const fieldValue = input.value;
+
+    console.log(`Campo: ${fieldName} = "${fieldValue}" (tipo: ${input.type || input.tagName})`);
+
+    // Se o campo tem valor E ainda não está no FormData, adiciona
+    if (fieldValue && fieldValue.trim() !== '') {
+      // Garante que o campo está no FormData
+      if (!formData.has(fieldName)) {
+        formData.append(fieldName, fieldValue);
+        console.log(`✓ Adicionado: ${fieldName}`);
+      } else {
+        console.log(`✓ Já existe: ${fieldName}`);
+      }
+    } else {
+      console.log(`✗ Ignorado (vazio): ${fieldName}`);
+    }
+  });
+
+  // Debug: mostra TODOS os dados que serão enviados
+  console.log('\n=== DADOS COMPLETOS DO FORMULÁRIO ===');
+  const formDataObject = {};
+  for (let [key, value] of formData.entries()) {
+    console.log(`${key}: ${value}`);
+    formDataObject[key] = value;
+  }
+  console.log('\nObjeto completo:', formDataObject);
+  console.log('=====================================\n');
+
+  // Mostra loading
+  const publishBtn = document.querySelector('button[onclick="publishNow()"]');
+  const originalBtnText = publishBtn ? publishBtn.innerHTML : '';
+  if (publishBtn) {
+    publishBtn.disabled = true;
+    publishBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Publicando...';
+  }
+
+  // Envia via AJAX
+  fetch('{{ route("panel.mercado-livre.save-and-publish", $product->id) }}', {
+    method: 'POST',
+    body: formData,
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest',
+      'Accept': 'application/json'
+    }
+  })
+  .then(response => {
+    if (!response.ok) {
+      return response.json().then(data => {
+        // Cria objeto com erro e dados para tratamento
+        const errorObj = new Error(data.error || 'Erro ao publicar');
+        errorObj.response = data;
+        throw errorObj;
+      });
+    }
+    return response.json();
+  })
+  .then(data => {
+    console.log('Sucesso:', data);
+
+    // Mostra mensagem de sucesso
+    alert(data.message || 'Anúncio enviado para publicação com sucesso!');
+
+    // Recarrega a página para mostrar o card de status
+    window.location.reload();
+  })
+  .catch(error => {
+    console.error('Erro completo:', error);
+
+    // Verifica se há erros de validação detalhados
+    if (error.response && error.response.errors) {
+      showValidationErrors(error.response.errors);
+    } else if (error.response && error.response.missing) {
+      // Atributos obrigatórios faltando
+      showMissingAttributesError(error.response.missing);
+    } else {
+      // Erro genérico
+      showErrorAlert(error.message || 'Erro ao publicar');
+    }
+
+    // Restaura botão
+    if (publishBtn) {
+      publishBtn.disabled = false;
+      publishBtn.innerHTML = originalBtnText;
+    }
+  });
+}
+
+// Função para mostrar erros de validação
+function showValidationErrors(errors) {
+  let errorHtml = '<div class="notion-card mb-3 border-danger">';
+  errorHtml += '<div class="alert alert-danger mb-0">';
+  errorHtml += '<h6 class="alert-heading"><i class="bi bi-exclamation-triangle-fill"></i> Erros de Validação</h6>';
+  errorHtml += '<p class="mb-2">Por favor, corrija os seguintes campos:</p>';
+  errorHtml += '<ul class="mb-0">';
+
+  Object.keys(errors).forEach(field => {
+    const fieldErrors = errors[field];
+    const fieldName = formatFieldName(field);
+    fieldErrors.forEach(err => {
+      errorHtml += `<li><strong>${fieldName}:</strong> ${err}</li>`;
+    });
+  });
+
+  errorHtml += '</ul></div></div>';
+
+  const messagesContainer = document.getElementById('dynamicMessages');
+  if (messagesContainer) {
+    messagesContainer.innerHTML = errorHtml;
+    messagesContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+// Função para mostrar erro de atributos obrigatórios
+function showMissingAttributesError(missing) {
+  let errorHtml = '<div class="notion-card mb-3 border-warning">';
+  errorHtml += '<div class="alert alert-warning mb-0">';
+  errorHtml += '<h6 class="alert-heading"><i class="bi bi-exclamation-circle-fill"></i> Atributos Obrigatórios Faltando</h6>';
+  errorHtml += '<p class="mb-2">Os seguintes atributos da categoria são obrigatórios:</p>';
+  errorHtml += '<ul class="mb-0">';
+
+  missing.forEach(attr => {
+    errorHtml += `<li>${attr}</li>`;
+  });
+
+  errorHtml += '</ul></div></div>';
+
+  const messagesContainer = document.getElementById('dynamicMessages');
+  if (messagesContainer) {
+    messagesContainer.innerHTML = errorHtml;
+    messagesContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+// Função para mostrar erro genérico
+function showErrorAlert(message) {
+  let errorHtml = '<div class="notion-card mb-3 border-danger">';
+  errorHtml += '<div class="alert alert-danger mb-0">';
+  errorHtml += `<i class="bi bi-x-circle-fill"></i> <strong>Erro:</strong> ${message}`;
+  errorHtml += '</div></div>';
+
+  const messagesContainer = document.getElementById('dynamicMessages');
+  if (messagesContainer) {
+    messagesContainer.innerHTML = errorHtml;
+    messagesContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+// Função auxiliar para formatar nomes de campos
+function formatFieldName(field) {
+  const fieldNames = {
+    'category_id': 'Categoria',
+    'price': 'Preço',
+    'available_quantity': 'Quantidade Disponível',
+    'condition': 'Condição',
+    'listing_type_id': 'Tipo de Anúncio',
+    'shipping_mode': 'Modo de Envio',
+    'shipping_local_pick_up': 'Retirada Local',
+    'title': 'Título',
+    'plain_text_description': 'Descrição',
+    'video_id': 'ID do Vídeo',
+    'warranty_type': 'Tipo de Garantia',
+    'warranty_time': 'Tempo de Garantia'
+  };
+
+  return fieldNames[field] || field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
 
 // Carrega atributos da categoria quando selecionada
@@ -554,7 +779,112 @@ function createAttributeField(attr, required, savedValue) {
   let input;
 
   if (attr.values && attr.values.length > 0) {
-    // Select com opções predefinidas
+    // Tratamento especial para BRAND - permite buscar/digitar
+    if (attr.id === 'BRAND') {
+      const wrapper = document.createElement('div');
+
+      // Select principal
+      input = document.createElement('select');
+      input.className = 'form-select mb-2';
+      input.name = `ml_attr[${attr.id}]`;
+      input.dataset.attrId = attr.id;
+      input.dataset.attrName = attr.name;
+      input.id = 'brand-select';
+
+      const emptyOption = document.createElement('option');
+      emptyOption.value = '';
+      emptyOption.textContent = 'Selecione uma marca...';
+      input.appendChild(emptyOption);
+
+      // Opção para digitar outra marca
+      const otherOption = document.createElement('option');
+      otherOption.value = '__OTHER__';
+      otherOption.textContent = '✏️ Digitar outra marca...';
+      input.appendChild(otherOption);
+
+      // Opção genérica
+      const genericOption = document.createElement('option');
+      genericOption.value = '242916|Genérico';
+      genericOption.textContent = 'Genérico (sem marca)';
+      input.appendChild(genericOption);
+
+      attr.values.forEach(value => {
+        const option = document.createElement('option');
+        option.value = value.id + '|' + value.name;
+        option.textContent = value.name;
+        option.dataset.valueId = value.id;
+        option.dataset.valueName = value.name;
+
+        if (savedValue && (savedValue === value.name || savedValue.startsWith(value.id + '|'))) {
+          option.selected = true;
+        }
+        input.appendChild(option);
+      });
+
+      // Campo para digitar marca customizada (oculto inicialmente)
+      const customInputWrapper = document.createElement('div');
+      customInputWrapper.style.display = 'none';
+      customInputWrapper.id = 'brand-custom-wrapper';
+
+      const customInput = document.createElement('input');
+      customInput.type = 'text';
+      customInput.className = 'form-control';
+      customInput.placeholder = 'Digite o nome da marca';
+      customInput.id = 'brand-custom-input';
+      customInput.list = 'brand-suggestions';
+
+      // Datalist para sugestões de marcas
+      const datalist = document.createElement('datalist');
+      datalist.id = 'brand-suggestions';
+
+      // Evento de busca ao digitar
+      let searchTimeout;
+      customInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        const query = this.value.trim();
+
+        if (query.length >= 2) {
+          searchTimeout = setTimeout(() => {
+            searchBrands(query, datalist);
+          }, 300); // Debounce de 300ms
+        }
+      });
+
+      customInputWrapper.appendChild(customInput);
+      customInputWrapper.appendChild(datalist);
+
+      // Evento para mostrar campo customizado
+      input.addEventListener('change', function() {
+        if (this.value === '__OTHER__') {
+          customInputWrapper.style.display = 'block';
+          customInput.required = required;
+          input.required = false;
+          input.name = ''; // Remove do envio
+          customInput.name = `ml_attr[${attr.id}]`;
+          customInput.focus();
+        } else {
+          customInputWrapper.style.display = 'none';
+          customInput.required = false;
+          customInput.name = '';
+          input.name = `ml_attr[${attr.id}]`;
+          input.required = required;
+        }
+      });
+
+      wrapper.appendChild(input);
+      wrapper.appendChild(customInputWrapper);
+
+      // Adiciona dica de busca
+      const hint = document.createElement('small');
+      hint.className = 'text-muted';
+      hint.innerHTML = '<i class="bi bi-info-circle"></i> Você pode selecionar uma marca da lista, usar "Genérico" ou digitar uma marca personalizada.';
+      wrapper.appendChild(hint);
+
+      div.appendChild(wrapper);
+      return div;
+    }
+
+    // Select normal para outros atributos com valores predefinidos
     input = document.createElement('select');
     input.className = 'form-select';
     input.name = `ml_attr[${attr.id}]`;
@@ -634,11 +964,104 @@ function createAttributeField(attr, required, savedValue) {
   return div;
 }
 
+// Função para buscar marcas na API do Mercado Livre
+async function searchBrands(query, datalist) {
+  try {
+    // Busca sugestões de marcas diretamente da API pública do ML
+    const response = await fetch(`https://api.mercadolibre.com/sites/MLB/domain_discovery/search?q=${encodeURIComponent(query)}`);
+
+    if (!response.ok) {
+      console.warn('Erro ao buscar marcas:', response.status);
+      return;
+    }
+
+    const data = await response.json();
+
+    // Limpa sugestões anteriores
+    datalist.innerHTML = '';
+
+    // Extrai marcas únicas dos resultados
+    const brands = new Set();
+
+    if (data && Array.isArray(data)) {
+      data.forEach(item => {
+        // Tenta extrair marca de diferentes campos
+        if (item.attributes) {
+          item.attributes.forEach(attr => {
+            if (attr.id === 'BRAND' && attr.value_name) {
+              brands.add(attr.value_name);
+            }
+          });
+        }
+      });
+    }
+
+    // Adiciona sugestões ao datalist
+    brands.forEach(brand => {
+      const option = document.createElement('option');
+      option.value = brand;
+      datalist.appendChild(option);
+    });
+
+    // Se não encontrou nenhuma marca, adiciona a própria busca como opção
+    if (brands.size === 0) {
+      const option = document.createElement('option');
+      option.value = query;
+      datalist.appendChild(option);
+    }
+
+  } catch (error) {
+    console.warn('Erro ao buscar marcas:', error);
+  }
+}
+
 // Carrega atributos se já tiver categoria selecionada
 window.addEventListener('load', function() {
   if (categorySelect.value) {
     categorySelect.dispatchEvent(new Event('change'));
   }
 });
+
+// Auto-refresh do status de publicação
+@if($listing && in_array($listing->status, ['queued', 'processing']))
+let statusCheckInterval = null;
+
+function checkPublishStatus() {
+  fetch('{{ route("panel.mercado-livre.publish-status", $product->id) }}')
+    .then(response => response.json())
+    .then(data => {
+      console.log('Status:', data);
+
+      // Atualiza mensagem
+      const statusMessage = document.getElementById('statusMessage');
+      if (statusMessage && data.message) {
+        const icons = {
+          'queued': '<i class="bi bi-clock-history"></i>',
+          'processing': '<i class="bi bi-arrow-repeat"></i>',
+          'active': '<i class="bi bi-check-circle-fill"></i>',
+          'failed': '<i class="bi bi-x-circle-fill"></i>'
+        };
+        statusMessage.innerHTML = (icons[data.status] || '') + ' ' + data.message;
+      }
+
+      // Se status mudou para active ou failed, recarrega a página
+      if (data.status === 'active' || data.status === 'failed') {
+        clearInterval(statusCheckInterval);
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      }
+    })
+    .catch(error => {
+      console.error('Erro ao verificar status:', error);
+    });
+}
+
+// Verifica status a cada 3 segundos
+statusCheckInterval = setInterval(checkPublishStatus, 3000);
+
+// Primeira verificação imediata
+checkPublishStatus();
+@endif
 </script>
 @endpush

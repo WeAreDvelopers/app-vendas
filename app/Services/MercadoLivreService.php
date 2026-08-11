@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use App\Helpers\IntegrationSettings;
 
 class MercadoLivreService
 {
@@ -13,13 +14,37 @@ class MercadoLivreService
     private const TOKEN_URL = 'https://api.mercadolibre.com/oauth/token';
 
     /**
+     * Busca App ID da configuração ou banco de dados
+     */
+    private function getAppId(?int $companyId = null): string
+    {
+        if ($companyId) {
+            return IntegrationSettings::getMercadoLivreAppId($companyId) ?? config('services.mercado_livre.app_id');
+        }
+
+        return config('services.mercado_livre.app_id');
+    }
+
+    /**
+     * Busca Secret Key da configuração ou banco de dados
+     */
+    private function getSecretKey(?int $companyId = null): string
+    {
+        if ($companyId) {
+            return IntegrationSettings::getMercadoLivreSecretKey($companyId) ?? config('services.mercado_livre.secret_key');
+        }
+
+        return config('services.mercado_livre.secret_key');
+    }
+
+    /**
      * Gera URL de autorização para OAuth
      */
-    public function getAuthorizationUrl(): string
+    public function getAuthorizationUrl(?int $companyId = null): string
     {
         $params = [
             'response_type' => 'code',
-            'client_id' => config('services.mercado_livre.app_id'),
+            'client_id' => $this->getAppId($companyId),
             'redirect_uri' => config('services.mercado_livre.redirect_uri'),
         ];
 
@@ -29,13 +54,13 @@ class MercadoLivreService
     /**
      * Troca o código de autorização por tokens de acesso
      */
-    public function getAccessToken(string $code): ?array
+    public function getAccessToken(string $code, ?int $companyId = null): ?array
     {
         try {
             $response = Http::asForm()->post(self::TOKEN_URL, [
                 'grant_type' => 'authorization_code',
-                'client_id' => config('services.mercado_livre.app_id'),
-                'client_secret' => config('services.mercado_livre.secret_key'),
+                'client_id' => $this->getAppId($companyId),
+                'client_secret' => $this->getSecretKey($companyId),
                 'code' => $code,
                 'redirect_uri' => config('services.mercado_livre.redirect_uri'),
             ]);
@@ -56,13 +81,13 @@ class MercadoLivreService
     /**
      * Renova o access token usando refresh token
      */
-    public function refreshAccessToken(string $refreshToken): ?array
+    public function refreshAccessToken(string $refreshToken, ?int $companyId = null): ?array
     {
         try {
             $response = Http::asForm()->post(self::TOKEN_URL, [
                 'grant_type' => 'refresh_token',
-                'client_id' => config('services.mercado_livre.app_id'),
-                'client_secret' => config('services.mercado_livre.secret_key'),
+                'client_id' => $this->getAppId($companyId),
+                'client_secret' => $this->getSecretKey($companyId),
                 'refresh_token' => $refreshToken,
             ]);
 
@@ -107,7 +132,68 @@ class MercadoLivreService
     }
 
     /**
+     * Busca token ativo da tabela company_integrations (novo sistema multi-company)
+     */
+    public function getActiveTokenFromIntegration(int $companyId): ?object
+    {
+        $integration = DB::table('company_integrations')
+            ->where('company_id', $companyId)
+            ->where('integration_type', 'mercado_livre')
+            ->where('active', true)
+            ->first();
+
+        if (!$integration) {
+            return null;
+        }
+
+        // Descriptografa credenciais
+        $credentials = json_decode($integration->credentials, true);
+        if (!$credentials || !isset($credentials['access_token'])) {
+            return null;
+        }
+
+        // Monta objeto compatível com o formato esperado
+        $token = (object) [
+            'id' => $integration->id,
+            'access_token' => $credentials['access_token'],
+            'refresh_token' => $credentials['refresh_token'] ?? null,
+            'ml_user_id' => $credentials['user_id'] ?? null,
+            'expires_at' => $integration->expires_at,
+            'company_id' => $companyId,
+        ];
+
+        // Verifica se o token expirou ou está próximo de expirar (5 min)
+        if (now()->addMinutes(5)->greaterThan($token->expires_at)) {
+            $newTokenData = $this->refreshAccessToken($token->refresh_token, $companyId);
+
+            if ($newTokenData) {
+                // Atualiza token no banco
+                $updatedCredentials = array_merge($credentials, [
+                    'access_token' => $newTokenData['access_token'],
+                    'refresh_token' => $newTokenData['refresh_token'],
+                ]);
+
+                DB::table('company_integrations')
+                    ->where('id', $integration->id)
+                    ->update([
+                        'credentials' => json_encode($updatedCredentials),
+                        'expires_at' => now()->addSeconds($newTokenData['expires_in']),
+                        'updated_at' => now(),
+                    ]);
+
+                // Atualiza objeto local
+                $token->access_token = $newTokenData['access_token'];
+                $token->refresh_token = $newTokenData['refresh_token'];
+                $token->expires_at = now()->addSeconds($newTokenData['expires_in']);
+            }
+        }
+
+        return $token;
+    }
+
+    /**
      * Busca token ativo (renova automaticamente se expirado)
+     * Sistema antigo - busca na tabela mercado_livre_tokens
      */
     public function getActiveToken(?int $userId = null): ?object
     {
@@ -414,15 +500,39 @@ class MercadoLivreService
                 ? json_decode($listingData['attributes'], true)
                 : $listingData['attributes'];
 
+            \Log::info('Processando atributos customizados no payload', [
+                'custom_attributes_raw' => $listingData['attributes'],
+                'custom_attributes_decoded' => $customAttributes,
+                'is_array' => is_array($customAttributes),
+                'count' => is_array($customAttributes) ? count($customAttributes) : 0
+            ]);
+
             if (is_array($customAttributes)) {
+                $beforeMerge = count($attributes);
+                $merged = 0;
+                $skipped = 0;
+
                 // Mescla atributos customizados, evitando duplicatas
                 foreach ($customAttributes as $attr) {
-                    if (isset($attr['id']) && isset($attr['value_name'])) {
+                    if (isset($attr['id']) && (isset($attr['value_name']) || isset($attr['value_id']))) {
                         // Remove atributo existente com mesmo ID se houver
                         $attributes = array_filter($attributes, fn($a) => $a['id'] !== $attr['id']);
                         $attributes[] = $attr;
+                        $merged++;
+                    } else {
+                        $skipped++;
                     }
                 }
+                // Reindexa o array UMA VEZ após todas as modificações
+                $attributes = array_values($attributes);
+
+                \Log::info('Resultado da mesclagem de atributos', [
+                    'before_merge' => $beforeMerge,
+                    'after_merge' => count($attributes),
+                    'merged' => $merged,
+                    'skipped' => $skipped,
+                    'final_attributes' => $attributes
+                ]);
             }
         }
 
@@ -578,6 +688,15 @@ class MercadoLivreService
             ->where('product_id', $productId)
             ->first();
 
+        // Garante que attributes está em formato JSON string (não double-encode)
+        $attributes = $data['attributes'] ?? [];
+        if (is_array($attributes)) {
+            $attributes = json_encode($attributes);
+        } elseif (!is_string($attributes)) {
+            $attributes = json_encode([]);
+        }
+        // Se já é string, mantém como está (já foi encoded)
+
         $listingData = [
             'product_id' => $productId,
             'title' => $data['title'] ?? '',
@@ -589,7 +708,7 @@ class MercadoLivreService
             'listing_type_id' => $data['listing_type_id'] ?? 'gold_special',
             'plain_text_description' => $data['plain_text_description'] ?? null,
             'video_id' => $data['video_id'] ?? null,
-            'attributes' => json_encode($data['attributes'] ?? []),
+            'attributes' => $attributes,
             'shipping_mode' => $data['shipping_mode'] ?? 'me2',
             'free_shipping' => $data['free_shipping'] ?? false,
             'shipping_local_pick_up' => $data['shipping_local_pick_up'] ?? 'true',
@@ -873,5 +992,347 @@ class MercadoLivreService
             Log::error('Exception toggling ML listing status: ' . $e->getMessage());
             return null;
         }
+    }
+
+    /**
+     * Sincroniza produtos do Mercado Livre para a base local
+     * Busca todos os produtos publicados e cria/atualiza na base local
+     */
+    public function syncProductsFromML(int $userId, int $companyId): array
+    {
+        // Tenta buscar token da tabela company_integrations primeiro (novo sistema)
+        $token = $this->getActiveTokenFromIntegration($companyId);
+
+        // Se não encontrar, tenta buscar da tabela mercado_livre_tokens (sistema antigo)
+        if (!$token) {
+            $token = $this->getActiveToken($userId);
+        }
+
+        if (!$token) {
+            return [
+                'success' => false,
+                'message' => 'Token do Mercado Livre não encontrado. Conecte sua conta primeiro.'
+            ];
+        }
+
+        try {
+            $stats = [
+                'total' => 0,
+                'created' => 0,
+                'updated' => 0,
+                'skipped' => 0,
+                'errors' => []
+            ];
+
+            // Busca todos os produtos do seller
+            $offset = 0;
+            $limit = 50;
+            $hasMore = true;
+
+            while ($hasMore) {
+                $response = Http::withToken($token->access_token)
+                    ->get(self::API_BASE_URL . "/users/{$token->ml_user_id}/items/search", [
+                        'offset' => $offset,
+                        'limit' => $limit,
+                        'status' => 'active' // apenas ativos
+                    ]);
+
+                if (!$response->successful()) {
+                    Log::error('Erro ao buscar produtos do ML', [
+                        'status' => $response->status(),
+                        'body' => $response->body()
+                    ]);
+                    break;
+                }
+
+                $data = $response->json();
+                $itemIds = $data['results'] ?? [];
+
+                if (empty($itemIds)) {
+                    $hasMore = false;
+                    break;
+                }
+
+                // Busca detalhes de cada produto
+                foreach ($itemIds as $mlId) {
+                    try {
+                        $productData = $this->getMLProductDetails($token->access_token, $mlId);
+
+                        if ($productData) {
+                            $result = $this->importMLProduct($productData, $companyId);
+
+                            if ($result['created']) {
+                                $stats['created']++;
+                            } elseif ($result['updated']) {
+                                $stats['updated']++;
+                            } else {
+                                $stats['skipped']++;
+                            }
+
+                            $stats['total']++;
+                        }
+                    } catch (\Exception $e) {
+                        $stats['errors'][] = "Erro ao importar {$mlId}: " . $e->getMessage();
+                        Log::error("Erro ao importar produto ML {$mlId}", [
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+
+                $offset += $limit;
+
+                // Verifica se tem mais produtos
+                if (count($itemIds) < $limit || $offset >= ($data['paging']['total'] ?? 0)) {
+                    $hasMore = false;
+                }
+            }
+
+            return [
+                'success' => true,
+                'stats' => $stats,
+                'message' => "Sincronização concluída: {$stats['created']} criados, {$stats['updated']} atualizados, {$stats['skipped']} ignorados"
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Erro na sincronização do ML: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => 'Erro na sincronização: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Busca detalhes completos de um produto do ML
+     */
+    private function getMLProductDetails(string $accessToken, string $mlId): ?array
+    {
+        try {
+            $response = Http::withToken($accessToken)
+                ->get(self::API_BASE_URL . "/items/{$mlId}");
+
+            if ($response->successful()) {
+                return $response->json();
+            }
+
+            return null;
+
+        } catch (\Exception $e) {
+            Log::error("Erro ao buscar detalhes do produto ML {$mlId}: " . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Importa/atualiza um produto do ML na base local
+     */
+    private function importMLProduct(array $mlData, int $companyId): array
+    {
+        // Extrai informações do produto ML
+        $mlId = $mlData['id'];
+        $sku = $mlData['seller_custom_field'] ?? 'ML-' . $mlId;
+
+        // Busca atributos importantes
+        $attributes = $mlData['attributes'] ?? [];
+        $brand = null;
+        $ean = null;
+
+        foreach ($attributes as $attr) {
+            if ($attr['id'] === 'BRAND') {
+                $brand = $attr['value_name'] ?? null;
+            }
+            if ($attr['id'] === 'GTIN') {
+                $ean = $attr['value_name'] ?? null;
+            }
+        }
+
+        // Verifica se o produto já existe (por ML ID ou SKU)
+        $existingProduct = DB::table('products')
+            ->where('company_id', $companyId)
+            ->where(function($q) use ($sku, $mlId) {
+                $q->where('sku', $sku)
+                  ->orWhere('ml_id', $mlId);
+            })
+            ->first();
+
+        // Prepara atributos extras como JSON (warranty, dimensions, etc)
+        $attributes = [];
+        if (!empty($mlData['warranty'])) {
+            $attributes['warranty'] = $mlData['warranty'];
+        }
+        if (!empty($mlData['video_id'])) {
+            $attributes['video_url'] = "https://www.youtube.com/watch?v={$mlData['video_id']}";
+        }
+        if (!empty($mlData['category_id'])) {
+            $attributes['category_id'] = $mlData['category_id'];
+        }
+        if (!empty($mlData['condition'])) {
+            $attributes['condition'] = $mlData['condition'];
+        }
+
+        // Adiciona dimensões se disponíveis
+        $shipping = $mlData['shipping'] ?? [];
+        if (!empty($shipping['dimensions'])) {
+            $attributes['weight'] = ($shipping['dimensions']['weight'] ?? 0) * 1000; // kg para gramas
+            $attributes['width'] = $shipping['dimensions']['width'] ?? 0;
+            $attributes['height'] = $shipping['dimensions']['height'] ?? 0;
+            $attributes['length'] = $shipping['dimensions']['length'] ?? 0;
+        }
+
+        $productData = [
+            'ml_id' => $mlId,
+            'sku' => $sku,
+            'ean' => $ean,
+            'name' => $mlData['title'],
+            'brand' => $brand,
+            'description' => $mlData['plain_text_description'] ?? $mlData['description'] ?? null,
+            'price' => $mlData['price'] ?? 0,
+            'stock' => $mlData['available_quantity'] ?? 0,
+            'attributes' => !empty($attributes) ? json_encode($attributes) : null,
+            'status' => 'ready',
+            'company_id' => $companyId,
+            'updated_at' => now()
+        ];
+
+        if ($existingProduct) {
+            // Atualiza produto existente
+            DB::table('products')
+                ->where('id', $existingProduct->id)
+                ->update($productData);
+
+            // Importa imagens se não tiver
+            $existingImages = DB::table('product_images')
+                ->where('product_id', $existingProduct->id)
+                ->count();
+
+            if ($existingImages === 0) {
+                $this->importMLProductImages($mlData, $existingProduct->id);
+            }
+
+            return ['created' => false, 'updated' => true, 'product_id' => $existingProduct->id];
+
+        } else {
+            // Cria novo produto
+            $productData['created_at'] = now();
+            $productId = DB::table('products')->insertGetId($productData);
+
+            // Importa imagens
+            $this->importMLProductImages($mlData, $productId);
+
+            return ['created' => true, 'updated' => false, 'product_id' => $productId];
+        }
+    }
+
+    /**
+     * Importa imagens de um produto do ML
+     */
+    private function importMLProductImages(array $mlData, int $productId): void
+    {
+        $pictures = $mlData['pictures'] ?? [];
+
+        foreach ($pictures as $index => $picture) {
+            $imageUrl = $picture['url'] ?? $picture['secure_url'] ?? null;
+
+            if ($imageUrl) {
+                DB::table('product_images')->insert([
+                    'product_id' => $productId,
+                    'path' => $imageUrl,
+                    'source_url' => $imageUrl,
+                    'sort' => $index + 1,
+                    'bg_removed' => false,
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Busca um pedido (order) da API do Mercado Livre para a empresa informada.
+     */
+    public function getOrder(int $companyId, string $orderId): ?array
+    {
+        $token = $this->getActiveTokenFromIntegration($companyId);
+        if (!$token || empty($token->access_token)) {
+            Log::warning('getOrder: sem token para empresa', ['company_id' => $companyId]);
+            return null;
+        }
+
+        $response = Http::withToken($token->access_token)
+            ->get("https://api.mercadolibre.com/orders/{$orderId}");
+
+        if (!$response->successful()) {
+            Log::error('getOrder: falha ao buscar pedido', [
+                'order_id' => $orderId, 'status' => $response->status(),
+            ]);
+            return null;
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Busca uma página de pedidos do vendedor (para backfill histórico).
+     * Retorna o corpo bruto da API (com 'results' e 'paging') ou null.
+     */
+    public function searchOrders(int $companyId, int $offset = 0, int $limit = 50, ?string $dateFrom = null): ?array
+    {
+        $token = $this->getActiveTokenFromIntegration($companyId);
+        if (!$token || empty($token->access_token) || empty($token->ml_user_id)) {
+            Log::warning('searchOrders: sem token/vendedor para empresa', ['company_id' => $companyId]);
+            return null;
+        }
+
+        $params = [
+            'seller' => $token->ml_user_id,
+            'offset' => $offset,
+            'limit' => $limit,
+            'sort' => 'date_desc',
+        ];
+        if ($dateFrom) {
+            $params['order.date_created.from'] = $dateFrom;
+        }
+
+        $response = Http::withToken($token->access_token)
+            ->get('https://api.mercadolibre.com/orders/search', $params);
+
+        if (!$response->successful()) {
+            Log::error('searchOrders: falha ao buscar pedidos', [
+                'company_id' => $companyId, 'status' => $response->status(),
+            ]);
+            return null;
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Busca a etiqueta de envio (ZPL) do Mercado Envios para um shipment.
+     * Retorna o conteúdo ZPL bruto ou null se indisponível.
+     */
+    public function getShipmentLabel(int $companyId, string $shipmentId): ?string
+    {
+        $token = $this->getActiveTokenFromIntegration($companyId);
+        if (!$token || empty($token->access_token)) {
+            Log::warning('getShipmentLabel: sem token para empresa', ['company_id' => $companyId]);
+            return null;
+        }
+
+        $response = Http::withToken($token->access_token)
+            ->get('https://api.mercadolibre.com/shipment_labels', [
+                'shipment_ids' => $shipmentId,
+                'response_type' => 'zpl2',
+            ]);
+
+        if (!$response->successful()) {
+            Log::warning('getShipmentLabel: etiqueta indisponível', [
+                'company_id' => $companyId, 'shipment_id' => $shipmentId, 'status' => $response->status(),
+            ]);
+            return null;
+        }
+
+        $body = $response->body();
+
+        return $body !== '' ? $body : null;
     }
 }

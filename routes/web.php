@@ -9,8 +9,6 @@ use App\Http\Controllers\Panel\ListingUIController;
 use App\Http\Controllers\Panel\OrderUIController;
 use App\Http\Controllers\Panel\SupplierController;
 use App\Http\Controllers\MonitorController;
-use App\Http\Controllers\ImportController;
-use App\Http\Controllers\WebhookController;
 
 // Authentication routes
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
@@ -21,10 +19,34 @@ Route::get('/', fn() => redirect()->route('panel.dashboard'))->name('home');
 
 // Mercado Livre OAuth Callback (sem autenticação para receber callback)
 Route::get('/mercado-livre/callback', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'callback'])->name('mercado-livre.callback');
-Route::post('/mercado-livre/notifications', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'notifications'])->name('mercado-livre.notifications');
 
 Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
+    // Companies
+    Route::get('/companies', [\App\Http\Controllers\Panel\CompanyController::class, 'index'])->name('companies.index');
+    Route::post('/companies/switch', [\App\Http\Controllers\Panel\CompanyController::class, 'switch'])->name('companies.switch');
+    Route::get('/companies/create', [\App\Http\Controllers\Panel\CompanyController::class, 'create'])->name('companies.create');
+    Route::post('/companies', [\App\Http\Controllers\Panel\CompanyController::class, 'store'])->name('companies.store');
+    Route::get('/companies/{id}/edit', [\App\Http\Controllers\Panel\CompanyController::class, 'edit'])->name('companies.edit');
+    Route::put('/companies/{id}', [\App\Http\Controllers\Panel\CompanyController::class, 'update'])->name('companies.update');
+
+    // Integrations
+    Route::get('/integrations', [\App\Http\Controllers\Panel\IntegrationController::class, 'index'])->name('integrations.index');
+
+    // Mercado Livre Integration
+    Route::get('/integrations/mercado-livre/connect', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreConnect'])->name('integrations.ml.connect');
+    Route::get('/integrations/mercado-livre/callback', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreCallback'])->name('integrations.ml.callback');
+    Route::post('/integrations/mercado-livre/disconnect', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreDisconnect'])->name('integrations.ml.disconnect');
+    Route::post('/integrations/mercado-livre/reconnect', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreReconnect'])->name('integrations.ml.reconnect');
+    Route::post('/integrations/mercado-livre/save-credentials', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreSaveCredentials'])->name('integrations.ml.save-credentials');
+    Route::post('/integrations/mercado-livre/settings', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreSaveSettings'])->name('integrations.ml.settings');
+    Route::post('/integrations/mercado-livre/print-token', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreGeneratePrintToken'])->name('integrations.ml.print-token');
+
+    // Google Drive Integration
+    Route::get('/integrations/google-drive/connect', [\App\Http\Controllers\Panel\IntegrationController::class, 'googleDriveConnect'])->name('integrations.drive.connect');
+    Route::get('/integrations/google-drive/callback', [\App\Http\Controllers\Panel\IntegrationController::class, 'googleDriveCallback'])->name('integrations.drive.callback');
+    Route::post('/integrations/google-drive/disconnect', [\App\Http\Controllers\Panel\IntegrationController::class, 'googleDriveDisconnect'])->name('integrations.drive.disconnect');
 
     // Suppliers
     Route::resource('suppliers', SupplierController::class);
@@ -40,9 +62,14 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::get('/imports/{id}/errors', [ImportUIController::class, 'errors'])->name('imports.errors');
     Route::get('/imports/{id}/errors/export', [ImportUIController::class, 'exportErrors'])->name('imports.errors.export');
     Route::delete('/imports/{importId}/items/{itemId}', [ImportUIController::class, 'destroyItem'])->name('imports.items.destroy');
+    Route::post('/imports/{importId}/items/{itemId}/convert', [ImportUIController::class, 'convertWithoutAI'])->name('imports.items.convert');
 
     // Products, Listings, Orders
     Route::get('/products',          [ProductUIController::class, 'index'])->name('products.index');
+    Route::get('/products/create',   [ProductUIController::class, 'create'])->name('products.create');
+    Route::post('/products',         [ProductUIController::class, 'store'])->name('products.store');
+    Route::post('/products/sync',    [ProductUIController::class, 'sync'])->name('products.sync');
+    Route::post('/products/generate-description', [ProductUIController::class, 'generateDescription'])->name('products.generate-description');
     Route::get('/products/{id}',     [ProductUIController::class, 'show'])->name('products.show');
     Route::get('/products/{id}/edit', [ProductUIController::class, 'edit'])->name('products.edit');
     Route::put('/products/{id}',     [ProductUIController::class, 'update'])->name('products.update');
@@ -51,6 +78,7 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::post('/products/{id}/images', [ProductUIController::class, 'uploadImages'])->name('products.images.upload');
     Route::post('/products/{id}/images/search', [ProductUIController::class, 'searchImages'])->name('products.images.search');
     Route::post('/products/{id}/images/download', [ProductUIController::class, 'downloadSelectedImages'])->name('products.images.download');
+    Route::post('/products/{id}/images/drive/download', [ProductUIController::class, 'downloadDriveImages'])->name('products.images.drive.download');
     Route::delete('/products/{id}/images/{imageId}', [ProductUIController::class, 'deleteImage'])->name('products.images.delete');
     Route::delete('/products/{id}/images', [ProductUIController::class, 'deleteAllImages'])->name('products.images.deleteAll');
     Route::post('/products/{id}/reference-image', [ProductUIController::class, 'uploadReferenceImage'])->name('products.reference-image.upload');
@@ -65,10 +93,13 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::get('/mercado-livre/{productId}/prepare', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'prepare'])->name('mercado-livre.prepare');
     Route::post('/mercado-livre/{productId}/draft', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'saveDraft'])->name('mercado-livre.save-draft');
     Route::post('/mercado-livre/{productId}/publish', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'publish'])->name('mercado-livre.publish');
+    Route::post('/mercado-livre/{productId}/save-and-publish', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'saveDraftAndPublish'])->name('mercado-livre.save-and-publish');
+    Route::get('/mercado-livre/{productId}/publish-status', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'checkPublishStatus'])->name('mercado-livre.publish-status');
     Route::get('/mercado-livre/category-attributes', [\App\Http\Controllers\Panel\MercadoLivreController::class, 'getCategoryAttributes'])->name('mercado-livre.category-attributes');
 
     Route::get('/listings',          [ListingUIController::class, 'index'])->name('listings.index');
     Route::get('/orders',            [OrderUIController::class, 'index'])->name('orders.index');
+    Route::get('/orders/{id}',       [OrderUIController::class, 'show'])->name('orders.show');
 
     // Monitor
     Route::get('/monitor/queues',    [MonitorController::class, 'index'])->name('monitor.queues');
@@ -79,6 +110,3 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::post('/notifications/read-all',    [NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
     Route::delete('/notifications/{id}',      [NotificationController::class, 'destroy'])->name('notifications.destroy');
 });
-
-Route::post('/import/supplier', [ImportController::class,'store']);
-Route::post('/webhooks/meli',   [WebhookController::class,'meli']); 

@@ -154,6 +154,11 @@
           <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#searchImagesModal">
             <i class="bi bi-search"></i> Buscar Imagens
           </button>
+          @if(driveConnected())
+          <button type="button" class="btn btn-sm btn-info" onclick="openDrivePicker()">
+            <i class="bi bi-cloud"></i> Google Drive
+          </button>
+          @endif
           <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addImageModal">
             <i class="bi bi-plus-circle"></i> Upload Manual
           </button>
@@ -922,5 +927,106 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
   </div>
 </div>
+
+@if(driveConnected())
+<!-- Google Picker API -->
+<script src="https://apis.google.com/js/api.js"></script>
+<script>
+  let accessToken = '{{ driveAccessToken() }}';
+  const developerKey = '{{ env('GOOGLE_API_KEY') }}';
+  const clientId = '{{ env('GOOGLE_CLIENT_ID') }}';
+  const appId = '{{ env('GOOGLE_APP_ID', '') }}';
+  let pickerApiLoaded = false;
+  let oauthToken;
+
+  function loadPicker() {
+    gapi.load('auth', {'callback': onAuthApiLoad});
+    gapi.load('picker', {'callback': onPickerApiLoad});
+  }
+
+  function onAuthApiLoad() {
+    gapi.auth.setToken({access_token: accessToken});
+    oauthToken = accessToken;
+  }
+
+  function onPickerApiLoad() {
+    pickerApiLoaded = true;
+  }
+
+  function openDrivePicker() {
+    if (pickerApiLoaded && oauthToken) {
+      createPicker();
+    } else {
+      loadPicker();
+      setTimeout(openDrivePicker, 500);
+    }
+  }
+
+  function createPicker() {
+    const docsView = new google.picker.DocsView(google.picker.ViewId.DOCS_IMAGES)
+      .setIncludeFolders(true)
+      .setSelectFolderEnabled(false)
+      .setMode(google.picker.DocsViewMode.GRID);
+
+    const picker = new google.picker.PickerBuilder()
+      .addView(docsView)
+      .addView(new google.picker.DocsUploadView())
+      .setOAuthToken(oauthToken)
+      .setDeveloperKey(developerKey)
+      .setCallback(pickerCallback)
+      .setTitle('Selecione imagens do Google Drive')
+      .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+      .build();
+
+    picker.setVisible(true);
+  }
+
+  function pickerCallback(data) {
+    if (data[google.picker.Response.ACTION] == google.picker.Action.PICKED) {
+      const docs = data[google.picker.Response.DOCUMENTS];
+
+      // Mostra loading
+      const loadingHtml = `
+        <div class="alert alert-info">
+          <i class="bi bi-hourglass-split"></i>
+          Baixando ${docs.length} imagem(ns) do Google Drive...
+        </div>
+      `;
+      document.querySelector('.notion-card').insertAdjacentHTML('afterbegin', loadingHtml);
+
+      // Envia IDs dos arquivos para o backend
+      const fileIds = docs.map(doc => doc.id);
+
+      fetch('{{ route('panel.products.images.drive.download', $product->id) }}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({ file_ids: fileIds })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          window.location.reload();
+        } else {
+          alert('Erro ao baixar imagens: ' + (data.message || 'Erro desconhecido'));
+          location.reload();
+        }
+      })
+      .catch(error => {
+        console.error('Erro:', error);
+        alert('Erro ao processar imagens do Drive');
+        location.reload();
+      });
+    }
+  }
+
+  // Carregar API automaticamente
+  if (typeof gapi !== 'undefined') {
+    loadPicker();
+  }
+</script>
+@endif
 
 @endsection

@@ -12,7 +12,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        DB::statement("ALTER TABLE products_raw MODIFY COLUMN status ENUM('raw','normalized','enriched','ready','processing_ai','ai_processed','ai_failed') DEFAULT 'raw'");
+        // Sintaxe ENUM/MODIFY é específica do MySQL; no-op em outros drivers (ex.: SQLite dos testes).
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE products_raw MODIFY COLUMN status ENUM('raw','normalized','enriched','ready','processing_ai','ai_processed','ai_failed') DEFAULT 'raw'");
+        }
     }
 
     /**
@@ -20,6 +23,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        DB::statement("ALTER TABLE products_raw MODIFY COLUMN status ENUM('raw','normalized','enriched','ready') DEFAULT 'raw'");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE products_raw MODIFY COLUMN status ENUM('raw','normalized','enriched','ready') DEFAULT 'raw'");
+        }
     }
 };

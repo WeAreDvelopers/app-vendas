@@ -11,7 +11,10 @@ class SupplierController extends Controller
 {
     public function index()
     {
-        $suppliers = Supplier::withCount('imports')->latest()->paginate(20);
+        $suppliers = Supplier::where('company_id', auth()->user()->current_company_id)
+            ->withCount('imports')
+            ->latest()
+            ->paginate(20);
         return view('panel.suppliers.index', compact('suppliers'));
     }
 
@@ -28,6 +31,8 @@ class SupplierController extends Controller
             'description' => 'nullable|string',
             'active' => 'boolean',
         ]);
+
+        $validated['company_id'] = auth()->user()->current_company_id;
 
         $supplier = Supplier::create($validated);
 

@@ -5,16 +5,19 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Http;
 use App\Services\ImageSearchService;
 use App\Services\ImageProcessingService;
 use App\Services\AIDescriptionService;
+use App\Services\MercadoLivreService;
+use App\Models\Product;
 
 class ProductUIController extends Controller {
     public function index(Request $r) {
         $search = trim($r->get('q',''));
 
         // Usa Eloquent ao invés de Query Builder para ter acesso aos relationships
-        $query = \App\Models\Product::query();
+        $query = \App\Models\Product::where('company_id', auth()->user()->current_company_id);
 
         if ($search) {
             $query->where(function($q) use ($search){
@@ -30,12 +33,23 @@ class ProductUIController extends Controller {
         ->paginate(24)
         ->withQueryString();
 
+        // Carrega status do Mercado Livre para cada produto
+        $productIds = $products->pluck('id');
+        $mlListings = DB::table('mercado_livre_listings')
+            ->whereIn('product_id', $productIds)
+            ->get()
+            ->keyBy('product_id');
+
+        // Adiciona ml_listing a cada produto
+        foreach ($products as $product) {
+            $product->ml_listing = $mlListings->get($product->id);
+        }
+
         return view('panel.products.index', compact('products','search'));
     }
 
     public function show(int $id) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         // Busca produto raw relacionado para ver dados da IA
         $productRaw = null;
@@ -52,9 +66,128 @@ class ProductUIController extends Controller {
         return view('panel.products.show', compact('product', 'productRaw', 'images'));
     }
 
+    public function create() {
+        return view('panel.products.create');
+    }
+
+    public function store(Request $r) {
+        $r->validate([
+            // Campos básicos
+            'sku' => 'required|string|max:100|unique:products,sku',
+            'name' => 'required|string|max:255',
+            'ean' => 'nullable|string|max:20',
+            'brand' => 'nullable|string|max:100',
+            'category' => 'nullable|string|max:100',
+
+            // Campos do Mercado Livre
+            'title' => 'nullable|string|max:60',
+            'condition' => 'required|in:new,used',
+            'warranty' => 'nullable|string|max:50',
+            'video_url' => 'nullable|url',
+
+            // Descrição
+            'description' => 'nullable|string',
+
+            // Preço e estoque
+            'price' => 'required|numeric|min:0',
+            'cost_price' => 'nullable|numeric|min:0',
+            'stock' => 'required|integer|min:0',
+
+            // Dimensões e peso (obrigatórios para ML)
+            'weight' => 'required|numeric|min:0',
+            'width' => 'required|numeric|min:0',
+            'height' => 'required|numeric|min:0',
+            'length' => 'required|numeric|min:0',
+        ], [
+            // Mensagens customizadas em português
+            'sku.required' => 'O SKU é obrigatório.',
+            'sku.unique' => 'Este SKU já está cadastrado.',
+            'name.required' => 'O nome do produto é obrigatório.',
+            'title.max' => 'O título do anúncio deve ter no máximo 60 caracteres.',
+            'condition.required' => 'A condição do produto é obrigatória.',
+            'condition.in' => 'A condição deve ser "novo" ou "usado".',
+            'price.required' => 'O preço de venda é obrigatório.',
+            'price.min' => 'O preço deve ser maior ou igual a zero.',
+            'stock.required' => 'A quantidade em estoque é obrigatória.',
+            'stock.min' => 'O estoque não pode ser negativo.',
+            'weight.required' => 'O peso é obrigatório para o Mercado Livre.',
+            'weight.min' => 'O peso deve ser maior que zero.',
+            'width.required' => 'A largura é obrigatória para o Mercado Livre.',
+            'width.min' => 'A largura deve ser maior que zero.',
+            'height.required' => 'A altura é obrigatória para o Mercado Livre.',
+            'height.min' => 'A altura deve ser maior que zero.',
+            'length.required' => 'O comprimento é obrigatório para o Mercado Livre.',
+            'length.min' => 'O comprimento deve ser maior que zero.',
+            'video_url.url' => 'A URL do vídeo deve ser válida.',
+        ]);
+
+        // Prepara atributos extras (campos que não existem na tabela products)
+        $attributes = [];
+
+        if ($r->category) {
+            $attributes['category'] = $r->category;
+        }
+        if ($r->title) {
+            $attributes['title'] = $r->title;
+        }
+        if ($r->condition) {
+            $attributes['condition'] = $r->condition;
+        }
+        if ($r->warranty) {
+            $attributes['warranty'] = $r->warranty;
+        }
+        if ($r->video_url) {
+            $attributes['video_url'] = $r->video_url;
+        }
+        if ($r->weight) {
+            $attributes['weight'] = $r->weight;
+        }
+        if ($r->width) {
+            $attributes['width'] = $r->width;
+        }
+        if ($r->height) {
+            $attributes['height'] = $r->height;
+        }
+        if ($r->length) {
+            $attributes['length'] = $r->length;
+        }
+
+        // Cria o produto (apenas com colunas que existem na tabela)
+        $productId = DB::table('products')->insertGetId([
+            // Campos básicos
+            'sku' => $r->sku,
+            'name' => $r->name,
+            'ean' => $r->ean,
+            'brand' => $r->brand,
+
+            // Descrição
+            'description' => $r->description,
+
+            // Preço e estoque
+            'price' => $r->price,
+            'cost_price' => $r->cost_price,
+            'stock' => $r->stock,
+
+            // Atributos extras como JSON
+            'attributes' => !empty($attributes) ? json_encode($attributes) : null,
+
+            // Status inicial
+            'status' => 'ready',
+
+            // Company ID
+            'company_id' => auth()->user()->current_company_id,
+
+            // Timestamps
+            'created_at' => now(),
+            'updated_at' => now()
+        ]);
+
+        return redirect()->route('panel.products.show', $productId)
+            ->with('ok', 'Produto criado com sucesso! Agora você pode adicionar imagens.');
+    }
+
     public function edit(int $id) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         $images = DB::table('product_images')
             ->where('product_id', $id)
@@ -112,19 +245,34 @@ class ProductUIController extends Controller {
             'video_url.url' => 'A URL do vídeo deve ser válida.',
         ]);
 
-        // Atualiza o produto com todos os campos
+        // Busca produto atual (escopado por empresa) para mesclar atributos
+        $currentProduct = Product::findOrFail($id);
+        $currentAttributes = $currentProduct && $currentProduct->attributes
+            ? json_decode($currentProduct->attributes, true)
+            : [];
+
+        // Prepara atributos extras (campos que não existem na tabela products)
+        $attributes = array_merge($currentAttributes, [
+            'category' => $r->category,
+            'title' => $r->title,
+            'condition' => $r->condition,
+            'warranty' => $r->warranty,
+            'video_url' => $r->video_url,
+            'weight' => $r->weight,
+            'width' => $r->width,
+            'height' => $r->height,
+            'length' => $r->length,
+        ]);
+
+        // Remove valores nulos
+        $attributes = array_filter($attributes, fn($v) => $v !== null);
+
+        // Atualiza o produto (apenas com colunas que existem na tabela)
         DB::table('products')->where('id', $id)->update([
             // Campos básicos
             'name' => $r->name,
             'ean' => $r->ean,
             'brand' => $r->brand,
-            'category' => $r->category,
-
-            // Campos do Mercado Livre
-            'title' => $r->title,
-            'condition' => $r->condition,
-            'warranty' => $r->warranty,
-            'video_url' => $r->video_url,
 
             // Descrição
             'description' => $r->description,
@@ -134,11 +282,8 @@ class ProductUIController extends Controller {
             'cost_price' => $r->cost_price,
             'stock' => $r->stock,
 
-            // Dimensões e peso
-            'weight' => $r->weight,
-            'width' => $r->width,
-            'height' => $r->height,
-            'length' => $r->length,
+            // Atributos extras como JSON
+            'attributes' => !empty($attributes) ? json_encode($attributes) : null,
 
             // Atualiza timestamp
             'updated_at' => now()
@@ -149,8 +294,7 @@ class ProductUIController extends Controller {
     }
 
     public function uploadImages(Request $r, int $id, ImageProcessingService $imageProcessor) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         $r->validate([
             'images' => 'required|array|min:1|max:10',
@@ -210,8 +354,7 @@ class ProductUIController extends Controller {
     }
 
     public function uploadReferenceImage(Request $r, int $id) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         $r->validate([
             'reference_image' => 'required|image|mimes:jpeg,jpg,png|max:5120',
@@ -240,8 +383,7 @@ class ProductUIController extends Controller {
     }
 
     public function deleteReferenceImage(int $id) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         // Remove a imagem de referência
         if ($product->reference_image_path) {
@@ -260,8 +402,7 @@ class ProductUIController extends Controller {
     }
 
     public function searchImages(Request $r, int $id, ImageSearchService $imageService) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         $r->validate([
             'limit' => 'required|integer|min:1|max:10',
@@ -329,8 +470,7 @@ class ProductUIController extends Controller {
     }
 
     public function downloadSelectedImages(Request $r, int $id, ImageSearchService $imageService) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         $r->validate([
             'images' => 'required|array|min:1',
@@ -393,8 +533,7 @@ class ProductUIController extends Controller {
     }
 
     public function deleteImage(int $id, int $imageId) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         $image = DB::table('product_images')->where('id', $imageId)->where('product_id', $id)->first();
         abort_unless($image, 404);
@@ -430,8 +569,7 @@ class ProductUIController extends Controller {
     }
 
     public function deleteAllImages(int $id) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         try {
             $images = DB::table('product_images')->where('product_id', $id)->get();
@@ -458,8 +596,7 @@ class ProductUIController extends Controller {
     }
 
     public function destroy(int $id) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         try {
             // 1. Remove todas as imagens do storage
@@ -495,8 +632,7 @@ class ProductUIController extends Controller {
     }
 
     public function regenerateDescription(Request $r, int $id, AIDescriptionService $aiService) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         $r->validate([
             'context' => 'nullable|string|max:1000'
@@ -537,6 +673,214 @@ class ProductUIController extends Controller {
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao gerar descrição: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function generateDescription(Request $r, AIDescriptionService $aiService) {
+        $r->validate([
+            'product_info' => 'required|string|max:1000',
+            'context' => 'nullable|string|max:1000'
+        ]);
+
+        try {
+            $productInfo = $r->input('product_info', '');
+            $context = $r->input('context', '');
+
+            // Cria um objeto simulando ProductRaw para o serviço
+            $productData = (object) [
+                'id' => null,
+                'sku' => 'NEW',
+                'ean' => null,
+                'name' => $productInfo,
+                'brand' => null,
+                'extra' => ['context' => $context]
+            ];
+
+            // Gera descrição com IA
+            $aiResult = $aiService->generateDescription($productData);
+
+            \Log::info("Descrição gerada para novo produto", [
+                'provider' => $aiResult['provider'],
+                'cost' => $aiResult['cost'] ?? 0,
+                'has_context' => !empty($context)
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'description' => $aiResult['description'],
+                'provider' => $aiResult['provider'],
+                'model' => $aiResult['model'] ?? null
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error("Erro ao gerar descrição para novo produto: " . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao gerar descrição: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Sincroniza produtos de plataformas externas
+     */
+    public function sync(Request $r, MercadoLivreService $mlService)
+    {
+        $platform = $r->get('platform', 'mercado_livre');
+        $userId = auth()->id();
+        $companyId = auth()->user()->current_company_id;
+
+        try {
+            switch ($platform) {
+                case 'mercado_livre':
+                    $result = $mlService->syncProductsFromML($userId, $companyId);
+                    return response()->json($result);
+
+                case 'shopee':
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Integração com Shopee em desenvolvimento'
+                    ]);
+
+                case 'shopify':
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Integração com Shopify em desenvolvimento'
+                    ]);
+
+                default:
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Plataforma não suportada'
+                    ], 400);
+            }
+
+        } catch (\Exception $e) {
+            \Log::error("Erro na sincronização de produtos: " . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao sincronizar: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Download de imagens do Google Drive
+     */
+    public function downloadDriveImages(Request $request, $id)
+    {
+        try {
+            $fileIds = $request->input('file_ids', []);
+
+            if (empty($fileIds)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Nenhum arquivo selecionado'
+                ], 400);
+            }
+
+            // Verifica se Google Drive está conectado
+            if (!driveConnected()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Google Drive não está conectado'
+                ], 400);
+            }
+
+            $accessToken = driveAccessToken();
+
+            if (!$accessToken) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Não foi possível obter o token de acesso do Google Drive'
+                ], 400);
+            }
+
+            $product = Product::find($id);
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Produto não encontrado'
+                ], 404);
+            }
+
+            // Pega a ordem atual (maior sort + 1)
+            $maxSort = DB::table('product_images')
+                ->where('product_id', $id)
+                ->max('sort') ?? 0;
+
+            $downloadedCount = 0;
+
+            foreach ($fileIds as $index => $fileId) {
+                try {
+                    // Faz download do arquivo do Google Drive
+                    $response = Http::withHeaders([
+                        'Authorization' => 'Bearer ' . $accessToken
+                    ])->get("https://www.googleapis.com/drive/v3/files/{$fileId}?alt=media");
+
+                    if (!$response->successful()) {
+                        \Log::warning("Erro ao baixar arquivo {$fileId} do Google Drive: " . $response->body());
+                        continue;
+                    }
+
+                    // Pega metadados do arquivo
+                    $metaResponse = Http::withHeaders([
+                        'Authorization' => 'Bearer ' . $accessToken
+                    ])->get("https://www.googleapis.com/drive/v3/files/{$fileId}?fields=name,mimeType");
+
+                    $metadata = $metaResponse->json();
+                    $originalName = $metadata['name'] ?? 'image.jpg';
+                    $mimeType = $metadata['mimeType'] ?? 'image/jpeg';
+
+                    // Define extensão baseada no mime type
+                    $extension = match($mimeType) {
+                        'image/jpeg' => 'jpg',
+                        'image/png' => 'png',
+                        'image/gif' => 'gif',
+                        'image/webp' => 'webp',
+                        default => 'jpg'
+                    };
+
+                    // Gera nome único
+                    $fileName = uniqid('product_' . $id . '_') . '.' . $extension;
+                    $path = 'products/' . $id;
+
+                    // Salva arquivo
+                    Storage::put($path . '/' . $fileName, $response->body());
+
+                    // Salva no banco
+                    DB::table('product_images')->insert([
+                        'product_id' => $id,
+                        'path' => Storage::url($path . '/' . $fileName),
+                        'sort' => $maxSort + $index + 1,
+                        'created_at' => now(),
+                        'updated_at' => now()
+                    ]);
+
+                    $downloadedCount++;
+
+                } catch (\Exception $e) {
+                    \Log::error("Erro ao processar arquivo {$fileId}: " . $e->getMessage());
+                    continue;
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "{$downloadedCount} imagem(ns) importada(s) do Google Drive",
+                'count' => $downloadedCount
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error("Erro ao baixar imagens do Drive: " . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao processar imagens: ' . $e->getMessage()
             ], 500);
         }
     }
