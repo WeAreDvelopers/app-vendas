@@ -136,7 +136,8 @@ class MercadoLivreService
      */
     public function getActiveTokenFromIntegration(int $companyId): ?object
     {
-        $integration = DB::table('company_integrations')
+        // Via model: o cast 'encrypted:array' descriptografa as credenciais.
+        $integration = \App\Models\CompanyIntegration::query()
             ->where('company_id', $companyId)
             ->where('integration_type', 'mercado_livre')
             ->where('active', true)
@@ -146,8 +147,7 @@ class MercadoLivreService
             return null;
         }
 
-        // Descriptografa credenciais
-        $credentials = json_decode($integration->credentials, true);
+        $credentials = $integration->credentials;
         if (!$credentials || !isset($credentials['access_token'])) {
             return null;
         }
@@ -167,24 +167,18 @@ class MercadoLivreService
             $newTokenData = $this->refreshAccessToken($token->refresh_token, $companyId);
 
             if ($newTokenData) {
-                // Atualiza token no banco
-                $updatedCredentials = array_merge($credentials, [
+                // Atualiza token no banco (o cast recriptografa ao salvar).
+                $integration->credentials = array_merge($credentials, [
                     'access_token' => $newTokenData['access_token'],
                     'refresh_token' => $newTokenData['refresh_token'],
                 ]);
-
-                DB::table('company_integrations')
-                    ->where('id', $integration->id)
-                    ->update([
-                        'credentials' => json_encode($updatedCredentials),
-                        'expires_at' => now()->addSeconds($newTokenData['expires_in']),
-                        'updated_at' => now(),
-                    ]);
+                $integration->expires_at = now()->addSeconds($newTokenData['expires_in']);
+                $integration->save();
 
                 // Atualiza objeto local
                 $token->access_token = $newTokenData['access_token'];
                 $token->refresh_token = $newTokenData['refresh_token'];
-                $token->expires_at = now()->addSeconds($newTokenData['expires_in']);
+                $token->expires_at = $integration->expires_at;
             }
         }
 
