@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Crypt;
 
 class CompanyIntegration extends Model
 {
@@ -21,7 +20,9 @@ class CompanyIntegration extends Model
 
     protected $casts = [
         'active' => 'boolean',
-        'credentials' => 'array',
+        // Criptografado em repouso: access_token/refresh_token do ML não ficam em
+        // texto puro no banco. O cast cuida de (des)criptografar de forma transparente.
+        'credentials' => 'encrypted:array',
         'settings' => 'array',
         'connected_at' => 'datetime',
         'expires_at' => 'datetime'
@@ -36,33 +37,11 @@ class CompanyIntegration extends Model
     }
 
     /**
-     * Obtém credenciais descriptografadas
+     * Obtém as credenciais (o cast 'encrypted:array' já descriptografa).
      */
     public function getDecryptedCredentials(): ?array
     {
-        if (!$this->credentials) {
-            return null;
-        }
-
-        try {
-            // Se já for array, retorna direto
-            if (is_array($this->credentials)) {
-                return $this->credentials;
-            }
-
-            return json_decode(Crypt::decryptString($this->credentials), true);
-        } catch (\Exception $e) {
-            \Log::error("Erro ao descriptografar credenciais: " . $e->getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Define credenciais criptografadas
-     */
-    public function setEncryptedCredentials(array $credentials): void
-    {
-        $this->credentials = Crypt::encryptString(json_encode($credentials));
+        return $this->credentials ?: null;
     }
 
     /**

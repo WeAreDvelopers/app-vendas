@@ -7,24 +7,15 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
-use App\Services\MercadoLivreService;
-use App\Services\OrderIngestionService;
 use App\Support\MercadoLivre\CompanyResolver;
 
 class WebhookController extends Controller
 {
-    protected MercadoLivreService $mlService;
     protected CompanyResolver $companyResolver;
-    protected OrderIngestionService $orderIngestion;
 
-    public function __construct(
-        MercadoLivreService $mlService,
-        CompanyResolver $companyResolver,
-        OrderIngestionService $orderIngestion,
-    ) {
-        $this->mlService = $mlService;
+    public function __construct(CompanyResolver $companyResolver)
+    {
         $this->companyResolver = $companyResolver;
-        $this->orderIngestion = $orderIngestion;
     }
 
     /**
@@ -140,7 +131,8 @@ class WebhookController extends Controller
             return;
         }
 
-        // Resolve a empresa dona da conta ML (vendedor -> empresa).
+        // Resolve a empresa dona da conta ML (vendedor -> empresa) — consulta
+        // barata (indexada), sem chamar a API do ML.
         $companyId = $mlUserId !== null
             ? $this->companyResolver->companyIdForMlUser($mlUserId)
             : null;
@@ -150,19 +142,9 @@ class WebhookController extends Controller
             return;
         }
 
-        // Busca detalhes do pedido via API (token escopado por empresa).
-        $orderData = $this->mlService->getOrder($companyId, $orderId);
-
-        if (!$orderData) {
-            Log::error('Failed to fetch order details', [
-                'order_id' => $orderId,
-                'company_id' => $companyId,
-            ]);
-            return;
-        }
-
-        // Upsert idempotente (order + items) escopado; notifica só em pedido novo.
-        $this->orderIngestion->ingest($companyId, $orderData);
+        // Enfileira: o fetch na API do ML + ingestão rodam fora da thread do
+        // webhook (o ML exige resposta rápida; timeouts geram reentrega).
+        \App\Jobs\IngestMLOrder::dispatch($companyId, (string) $orderId);
     }
 
     /**

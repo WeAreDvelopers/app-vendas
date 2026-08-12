@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\IngestMLOrder;
 use App\Models\CompanyIntegration;
 use App\Models\Order;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\CreatesTenants;
 use Tests\TestCase;
@@ -64,6 +66,27 @@ class MercadoLivreOrderWebhookTest extends TestCase
         $this->assertSame('paid', $order->status);
         $this->assertCount(1, $order->items);
         $this->assertSame(2, $order->items->first()->qty);
+    }
+
+    public function test_webhook_enqueues_job_without_calling_api(): void
+    {
+        Bus::fake();
+        Http::fake();
+        $company = $this->makeCompany('A');
+        $this->integrate($company, '777');
+
+        $res = $this->postJson('/api/webhooks/mercado-livre', [
+            'topic' => 'orders_v2',
+            'resource' => '/orders/2000123',
+            'user_id' => 777,
+        ]);
+
+        $res->assertStatus(200);
+        // Responde 200 e enfileira — sem tocar a API do ML na thread do request.
+        Http::assertNothingSent();
+        Bus::assertDispatched(IngestMLOrder::class, function (IngestMLOrder $job) use ($company) {
+            return $job->companyId === $company->id && $job->orderId === '2000123';
+        });
     }
 
     public function test_webhook_ignores_unknown_ml_user(): void
