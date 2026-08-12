@@ -9,7 +9,6 @@ use App\Http\Controllers\Panel\ListingUIController;
 use App\Http\Controllers\Panel\OrderUIController;
 use App\Http\Controllers\Panel\SupplierController;
 use App\Http\Controllers\MonitorController;
-use App\Http\Controllers\ImportController;
 
 // Authentication routes
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
@@ -41,6 +40,8 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::post('/integrations/mercado-livre/disconnect', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreDisconnect'])->name('integrations.ml.disconnect');
     Route::post('/integrations/mercado-livre/reconnect', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreReconnect'])->name('integrations.ml.reconnect');
     Route::post('/integrations/mercado-livre/save-credentials', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreSaveCredentials'])->name('integrations.ml.save-credentials');
+    Route::post('/integrations/mercado-livre/settings', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreSaveSettings'])->name('integrations.ml.settings');
+    Route::post('/integrations/mercado-livre/print-token', [\App\Http\Controllers\Panel\IntegrationController::class, 'mercadoLivreGeneratePrintToken'])->name('integrations.ml.print-token');
 
     // Google Drive Integration
     Route::get('/integrations/google-drive/connect', [\App\Http\Controllers\Panel\IntegrationController::class, 'googleDriveConnect'])->name('integrations.drive.connect');
@@ -61,6 +62,7 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::get('/imports/{id}/errors', [ImportUIController::class, 'errors'])->name('imports.errors');
     Route::get('/imports/{id}/errors/export', [ImportUIController::class, 'exportErrors'])->name('imports.errors.export');
     Route::delete('/imports/{importId}/items/{itemId}', [ImportUIController::class, 'destroyItem'])->name('imports.items.destroy');
+    Route::post('/imports/{importId}/items/{itemId}/convert', [ImportUIController::class, 'convertWithoutAI'])->name('imports.items.convert');
 
     // Products, Listings, Orders
     Route::get('/products',          [ProductUIController::class, 'index'])->name('products.index');
@@ -97,6 +99,7 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
 
     Route::get('/listings',          [ListingUIController::class, 'index'])->name('listings.index');
     Route::get('/orders',            [OrderUIController::class, 'index'])->name('orders.index');
+    Route::get('/orders/{id}',       [OrderUIController::class, 'show'])->name('orders.show');
 
     // Monitor
     Route::get('/monitor/queues',    [MonitorController::class, 'index'])->name('monitor.queues');
@@ -107,6 +110,3 @@ Route::prefix('panel')->name('panel.')->middleware('auth')->group(function () {
     Route::post('/notifications/read-all',    [NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
     Route::delete('/notifications/{id}',      [NotificationController::class, 'destroy'])->name('notifications.destroy');
 });
-
-Route::post('/import/supplier', [ImportController::class,'store']);
-Route::post('/import/convert-without-ai', [ImportController::class,'convertWithoutAI']); 

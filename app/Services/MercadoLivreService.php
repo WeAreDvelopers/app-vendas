@@ -136,7 +136,8 @@ class MercadoLivreService
      */
     public function getActiveTokenFromIntegration(int $companyId): ?object
     {
-        $integration = DB::table('company_integrations')
+        // Via model: o cast 'encrypted:array' descriptografa as credenciais.
+        $integration = \App\Models\CompanyIntegration::query()
             ->where('company_id', $companyId)
             ->where('integration_type', 'mercado_livre')
             ->where('active', true)
@@ -146,8 +147,7 @@ class MercadoLivreService
             return null;
         }
 
-        // Descriptografa credenciais
-        $credentials = json_decode($integration->credentials, true);
+        $credentials = $integration->credentials;
         if (!$credentials || !isset($credentials['access_token'])) {
             return null;
         }
@@ -167,24 +167,18 @@ class MercadoLivreService
             $newTokenData = $this->refreshAccessToken($token->refresh_token, $companyId);
 
             if ($newTokenData) {
-                // Atualiza token no banco
-                $updatedCredentials = array_merge($credentials, [
+                // Atualiza token no banco (o cast recriptografa ao salvar).
+                $integration->credentials = array_merge($credentials, [
                     'access_token' => $newTokenData['access_token'],
                     'refresh_token' => $newTokenData['refresh_token'],
                 ]);
-
-                DB::table('company_integrations')
-                    ->where('id', $integration->id)
-                    ->update([
-                        'credentials' => json_encode($updatedCredentials),
-                        'expires_at' => now()->addSeconds($newTokenData['expires_in']),
-                        'updated_at' => now(),
-                    ]);
+                $integration->expires_at = now()->addSeconds($newTokenData['expires_in']);
+                $integration->save();
 
                 // Atualiza objeto local
                 $token->access_token = $newTokenData['access_token'];
                 $token->refresh_token = $newTokenData['refresh_token'];
-                $token->expires_at = now()->addSeconds($newTokenData['expires_in']);
+                $token->expires_at = $integration->expires_at;
             }
         }
 
@@ -1245,5 +1239,94 @@ class MercadoLivreService
                 ]);
             }
         }
+    }
+
+    /**
+     * Busca um pedido (order) da API do Mercado Livre para a empresa informada.
+     */
+    public function getOrder(int $companyId, string $orderId): ?array
+    {
+        $token = $this->getActiveTokenFromIntegration($companyId);
+        if (!$token || empty($token->access_token)) {
+            Log::warning('getOrder: sem token para empresa', ['company_id' => $companyId]);
+            return null;
+        }
+
+        $response = Http::withToken($token->access_token)
+            ->get("https://api.mercadolibre.com/orders/{$orderId}");
+
+        if (!$response->successful()) {
+            Log::error('getOrder: falha ao buscar pedido', [
+                'order_id' => $orderId, 'status' => $response->status(),
+            ]);
+            return null;
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Busca uma página de pedidos do vendedor (para backfill histórico).
+     * Retorna o corpo bruto da API (com 'results' e 'paging') ou null.
+     */
+    public function searchOrders(int $companyId, int $offset = 0, int $limit = 50, ?string $dateFrom = null): ?array
+    {
+        $token = $this->getActiveTokenFromIntegration($companyId);
+        if (!$token || empty($token->access_token) || empty($token->ml_user_id)) {
+            Log::warning('searchOrders: sem token/vendedor para empresa', ['company_id' => $companyId]);
+            return null;
+        }
+
+        $params = [
+            'seller' => $token->ml_user_id,
+            'offset' => $offset,
+            'limit' => $limit,
+            'sort' => 'date_desc',
+        ];
+        if ($dateFrom) {
+            $params['order.date_created.from'] = $dateFrom;
+        }
+
+        $response = Http::withToken($token->access_token)
+            ->get('https://api.mercadolibre.com/orders/search', $params);
+
+        if (!$response->successful()) {
+            Log::error('searchOrders: falha ao buscar pedidos', [
+                'company_id' => $companyId, 'status' => $response->status(),
+            ]);
+            return null;
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Busca a etiqueta de envio (ZPL) do Mercado Envios para um shipment.
+     * Retorna o conteúdo ZPL bruto ou null se indisponível.
+     */
+    public function getShipmentLabel(int $companyId, string $shipmentId): ?string
+    {
+        $token = $this->getActiveTokenFromIntegration($companyId);
+        if (!$token || empty($token->access_token)) {
+            Log::warning('getShipmentLabel: sem token para empresa', ['company_id' => $companyId]);
+            return null;
+        }
+
+        $response = Http::withToken($token->access_token)
+            ->get('https://api.mercadolibre.com/shipment_labels', [
+                'shipment_ids' => $shipmentId,
+                'response_type' => 'zpl2',
+            ]);
+
+        if (!$response->successful()) {
+            Log::warning('getShipmentLabel: etiqueta indisponível', [
+                'company_id' => $companyId, 'shipment_id' => $shipmentId, 'status' => $response->status(),
+            ]);
+            return null;
+        }
+
+        $body = $response->body();
+
+        return $body !== '' ? $body : null;
     }
 }

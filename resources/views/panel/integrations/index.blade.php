@@ -43,6 +43,10 @@
             <i class="bi bi-key"></i> Configurar API
           </button>
 
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#mlSettingsModal">
+            <i class="bi bi-sliders"></i> Opções
+          </button>
+
           <form method="POST" action="{{ route('panel.integrations.ml.disconnect') }}" class="d-inline">
             @csrf
             <button type="submit" class="btn btn-outline-danger btn-sm"
@@ -420,6 +424,79 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Opções do Mercado Livre -->
+<div class="modal fade" id="mlSettingsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-sliders me-2"></i>Opções - Mercado Livre</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Impressão de etiqueta -->
+        <form method="POST" action="{{ route('panel.integrations.ml.settings') }}">
+          @csrf
+          <h6 class="mb-3"><i class="bi bi-printer me-1"></i> Impressão de etiqueta</h6>
+
+          <div class="form-check form-switch mb-3">
+            <input type="hidden" name="auto_print" value="0">
+            <input class="form-check-input" type="checkbox" role="switch" id="autoPrintSwitch"
+                   name="auto_print" value="1" @checked($mlAutoPrint)>
+            <label class="form-check-label" for="autoPrintSwitch">
+              Imprimir etiqueta automaticamente ao receber uma venda nova
+            </label>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Conteúdo da etiqueta</label>
+            <select name="label_mode" class="form-select">
+              <option value="auto" @selected($mlLabelMode==='auto')>Etiqueta real do Mercado Envios (recomendado)</option>
+              <option value="simple" @selected($mlLabelMode==='simple')>Etiqueta simples (nº do pedido)</option>
+            </select>
+            <div class="form-text">
+              No modo real, se a etiqueta ainda não estiver disponível no ML, o sistema usa a simples como fallback.
+            </div>
+          </div>
+
+          <div class="text-end">
+            <button type="submit" class="btn btn-success btn-sm"><i class="bi bi-save"></i> Salvar opções</button>
+          </div>
+        </form>
+
+        <hr class="my-4">
+
+        <!-- Token do agente de impressão -->
+        <h6 class="mb-2"><i class="bi bi-key me-1"></i> Token do agente de impressão</h6>
+        <p class="small text-muted">
+          Use este token no programa agente que imprime as etiquetas. Cada empresa tem o seu — o agente só recebe as etiquetas desta empresa.
+        </p>
+
+        <div class="input-group mb-2">
+          <input type="text" class="form-control" id="printAgentTokenInput" readonly
+                 value="{{ $printAgentToken ?? '' }}" placeholder="Nenhum token gerado ainda">
+          <button class="btn btn-outline-secondary" type="button"
+                  onclick="copyToClipboard('{{ $printAgentToken ?? '' }}')" @disabled(empty($printAgentToken))>
+            <i class="bi bi-clipboard"></i> Copiar
+          </button>
+        </div>
+
+        <form method="POST" action="{{ route('panel.integrations.ml.print-token') }}">
+          @csrf
+          <button type="submit" class="btn btn-outline-primary btn-sm"
+                  onclick="return confirm('Gerar um novo token? O token anterior deixará de funcionar imediatamente.')">
+            <i class="bi bi-arrow-repeat"></i> {{ $printAgentToken ? 'Gerar novo token' : 'Gerar token' }}
+          </button>
+        </form>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+      </div>
     </div>
   </div>
 </div>

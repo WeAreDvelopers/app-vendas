@@ -10,6 +10,7 @@ use App\Services\ImageSearchService;
 use App\Services\ImageProcessingService;
 use App\Services\AIDescriptionService;
 use App\Services\MercadoLivreService;
+use App\Models\Product;
 
 class ProductUIController extends Controller {
     public function index(Request $r) {
@@ -48,8 +49,7 @@ class ProductUIController extends Controller {
     }
 
     public function show(int $id) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         // Busca produto raw relacionado para ver dados da IA
         $productRaw = null;
@@ -187,8 +187,7 @@ class ProductUIController extends Controller {
     }
 
     public function edit(int $id) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         $images = DB::table('product_images')
             ->where('product_id', $id)
@@ -246,8 +245,8 @@ class ProductUIController extends Controller {
             'video_url.url' => 'A URL do vídeo deve ser válida.',
         ]);
 
-        // Busca produto atual para mesclar atributos
-        $currentProduct = DB::table('products')->where('id', $id)->first();
+        // Busca produto atual (escopado por empresa) para mesclar atributos
+        $currentProduct = Product::findOrFail($id);
         $currentAttributes = $currentProduct && $currentProduct->attributes
             ? json_decode($currentProduct->attributes, true)
             : [];
@@ -295,8 +294,7 @@ class ProductUIController extends Controller {
     }
 
     public function uploadImages(Request $r, int $id, ImageProcessingService $imageProcessor) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         $r->validate([
             'images' => 'required|array|min:1|max:10',
@@ -356,8 +354,7 @@ class ProductUIController extends Controller {
     }
 
     public function uploadReferenceImage(Request $r, int $id) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         $r->validate([
             'reference_image' => 'required|image|mimes:jpeg,jpg,png|max:5120',
@@ -386,8 +383,7 @@ class ProductUIController extends Controller {
     }
 
     public function deleteReferenceImage(int $id) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         // Remove a imagem de referência
         if ($product->reference_image_path) {
@@ -406,8 +402,7 @@ class ProductUIController extends Controller {
     }
 
     public function searchImages(Request $r, int $id, ImageSearchService $imageService) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         $r->validate([
             'limit' => 'required|integer|min:1|max:10',
@@ -475,8 +470,7 @@ class ProductUIController extends Controller {
     }
 
     public function downloadSelectedImages(Request $r, int $id, ImageSearchService $imageService) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         $r->validate([
             'images' => 'required|array|min:1',
@@ -539,8 +533,7 @@ class ProductUIController extends Controller {
     }
 
     public function deleteImage(int $id, int $imageId) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         $image = DB::table('product_images')->where('id', $imageId)->where('product_id', $id)->first();
         abort_unless($image, 404);
@@ -576,8 +569,7 @@ class ProductUIController extends Controller {
     }
 
     public function deleteAllImages(int $id) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         try {
             $images = DB::table('product_images')->where('product_id', $id)->get();
@@ -604,8 +596,7 @@ class ProductUIController extends Controller {
     }
 
     public function destroy(int $id) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         try {
             // 1. Remove todas as imagens do storage
@@ -641,8 +632,7 @@ class ProductUIController extends Controller {
     }
 
     public function regenerateDescription(Request $r, int $id, AIDescriptionService $aiService) {
-        $product = DB::table('products')->find($id);
-        abort_unless($product, 404);
+        $product = Product::findOrFail($id);
 
         $r->validate([
             'context' => 'nullable|string|max:1000'
@@ -809,7 +799,7 @@ class ProductUIController extends Controller {
                 ], 400);
             }
 
-            $product = DB::table('products')->find($id);
+            $product = Product::find($id);
 
             if (!$product) {
                 return response()->json([

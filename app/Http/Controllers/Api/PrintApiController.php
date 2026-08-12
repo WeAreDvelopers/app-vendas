@@ -10,8 +10,13 @@ class PrintApiController extends Controller
     // GET /api/print/next
     public function next(Request $request)
     {
+        // Definido pelo middleware PrintAgentToken: null = token mestre (todas as
+        // empresas); id = agente escopado a uma empresa.
+        $companyId = $request->attributes->get('print_company_id');
+
         $job = DB::table('print_jobs')
             ->where('status', 'queued')
+            ->when($companyId !== null, fn ($q) => $q->where('company_id', $companyId))
             ->orderBy('id')
             ->first();
 
@@ -29,6 +34,7 @@ class PrintApiController extends Controller
         return response()->json([
             'job' => [
                 'id' => $job->id,
+                'company_id' => $job->company_id,
                 'order_id' => $job->order_id,
                 'type' => $job->type,
                 'driver' => $job->driver,

@@ -7,15 +7,15 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
-use App\Services\MercadoLivreService;
+use App\Support\MercadoLivre\CompanyResolver;
 
 class WebhookController extends Controller
 {
-    protected MercadoLivreService $mlService;
+    protected CompanyResolver $companyResolver;
 
-    public function __construct(MercadoLivreService $mlService)
+    public function __construct(CompanyResolver $companyResolver)
     {
-        $this->mlService = $mlService;
+        $this->companyResolver = $companyResolver;
     }
 
     /**
@@ -90,26 +90,26 @@ class WebhookController extends Controller
     }
 
     /**
-     * Valida se a requisição vem de um IP do Mercado Livre
+     * Valida a origem da notificação por segredo compartilhado.
+     *
+     * O Mercado Livre não assina os webhooks (sem HMAC), então protegemos o
+     * endpoint com um segredo configurado no próprio callback URL:
+     *   .../api/webhooks/mercado-livre?secret=XXXX
+     * ou via header X-Webhook-Secret. Se nenhum segredo estiver configurado,
+     * a validação fica desligada (compatível com o setup atual).
      */
     private function isValidMLSource(Request $request): bool
     {
-        $ip = $request->ip();
+        $expected = config('services.mercado_livre.webhook_secret');
 
-        // IPs conhecidos do Mercado Livre (adicione conforme necessário)
-        $allowedIPs = [
-            '209.225.49.0/24',  // Range do ML
-            '200.221.0.0/16',   // Range do ML
-            '127.0.0.1',        // Localhost para testes
-            '::1'               // IPv6 localhost
-        ];
+        // Sem segredo configurado → não valida origem.
+        if (empty($expected)) {
+            return true;
+        }
 
-        // Em produção, você pode validar também por user-agent
-        // ou por assinatura HMAC se o ML fornecer
+        $provided = $request->header('X-Webhook-Secret') ?? $request->query('secret');
 
-        // Por enquanto, aceita todas as requisições
-        // TODO: Implementar validação mais rigorosa em produção
-        return true;
+        return is_string($provided) && hash_equals((string) $expected, $provided);
     }
 
     /**
@@ -122,9 +122,8 @@ class WebhookController extends Controller
             'ml_user_id' => $mlUserId
         ]);
 
-        // Extrai o order ID do resource
-        // Formato: /orders/{order_id}
-        preg_match('/\/orders\/(\d+)/', $resource, $matches);
+        // Extrai o order ID do resource. Formato: /orders/{order_id}
+        preg_match('/\/orders\/([\w\-]+)/', $resource, $matches);
         $orderId = $matches[1] ?? null;
 
         if (!$orderId) {
@@ -132,51 +131,20 @@ class WebhookController extends Controller
             return;
         }
 
-        // Busca token do usuário
-        $token = DB::table('mercado_livre_tokens')
-            ->where('ml_user_id', $mlUserId)
-            ->where('is_active', true)
-            ->orderBy('created_at', 'desc')
-            ->first();
+        // Resolve a empresa dona da conta ML (vendedor -> empresa) — consulta
+        // barata (indexada), sem chamar a API do ML.
+        $companyId = $mlUserId !== null
+            ? $this->companyResolver->companyIdForMlUser($mlUserId)
+            : null;
 
-        if (!$token) {
-            Log::warning('Token not found for ML user', ['ml_user_id' => $mlUserId]);
+        if (!$companyId) {
+            Log::warning('No company resolved for ML user', ['ml_user_id' => $mlUserId]);
             return;
         }
 
-        // Busca detalhes do pedido via API
-        try {
-            $response = Http::withToken($token->access_token)
-                ->get("https://api.mercadolibre.com{$resource}");
-
-            if (!$response->successful()) {
-                Log::error('Failed to fetch order details', [
-                    'order_id' => $orderId,
-                    'status' => $response->status()
-                ]);
-                return;
-            }
-
-            $orderData = $response->json();
-
-            // Salva/atualiza o pedido no banco
-            $this->saveOrder($orderData, $token->user_id);
-
-            // Cria notificação para o usuário
-            $this->createUserNotification(
-                $token->user_id,
-                'Nova venda no Mercado Livre',
-                "Pedido #{$orderId} recebido. Total: R$ " . number_format($orderData['total_amount'] ?? 0, 2, ',', '.'),
-                'success',
-                route('panel.orders.index') // Assumindo que existe essa rota
-            );
-
-        } catch (\Exception $e) {
-            Log::error('Error processing order', [
-                'order_id' => $orderId,
-                'error' => $e->getMessage()
-            ]);
-        }
+        // Enfileira: o fetch na API do ML + ingestão rodam fora da thread do
+        // webhook (o ML exige resposta rápida; timeouts geram reentrega).
+        \App\Jobs\IngestMLOrder::dispatch($companyId, (string) $orderId);
     }
 
     /**
@@ -322,54 +290,6 @@ class WebhookController extends Controller
                 'warning',
                 null
             );
-        }
-    }
-
-    /**
-     * Salva ou atualiza um pedido no banco de dados
-     */
-    private function saveOrder(array $orderData, int $userId): void
-    {
-        $orderId = $orderData['id'] ?? null;
-
-        if (!$orderId) {
-            return;
-        }
-
-        // Verifica se o pedido já existe
-        $existingOrder = DB::table('orders')
-            ->where('ml_order_id', $orderId)
-            ->first();
-
-        $orderInfo = [
-            'ml_order_id' => $orderId,
-            'user_id' => $userId,
-            'status' => $orderData['status'] ?? 'pending',
-            'total_amount' => $orderData['total_amount'] ?? 0,
-            'paid_amount' => $orderData['paid_amount'] ?? 0,
-            'currency_id' => $orderData['currency_id'] ?? 'BRL',
-            'buyer_id' => $orderData['buyer']['id'] ?? null,
-            'buyer_nickname' => $orderData['buyer']['nickname'] ?? null,
-            'payment_type' => $orderData['payments'][0]['payment_type'] ?? null,
-            'shipping_status' => $orderData['shipping']['status'] ?? null,
-            'data' => json_encode($orderData),
-            'updated_at' => now()
-        ];
-
-        if ($existingOrder) {
-            // Atualiza pedido existente
-            DB::table('orders')
-                ->where('id', $existingOrder->id)
-                ->update($orderInfo);
-
-            Log::info('Order updated', ['order_id' => $orderId]);
-        } else {
-            // Cria novo pedido
-            $orderInfo['created_at'] = now();
-
-            DB::table('orders')->insert($orderInfo);
-
-            Log::info('Order created', ['order_id' => $orderId]);
         }
     }
 

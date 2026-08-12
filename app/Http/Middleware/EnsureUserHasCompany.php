@@ -27,13 +27,21 @@ class EnsureUserHasCompany
 
             if (!$firstCompany) {
                 // Usuário não tem acesso a nenhuma empresa
-                return redirect()->route('panel.companies.setup')
-                    ->with('error', 'Você precisa estar vinculado a uma empresa para acessar o sistema.');
+                if ($request->routeIs('panel.companies.create', 'panel.companies.store')) {
+                    app(\App\Support\CurrentCompany::class)->set(null);
+
+                    return $next($request);
+                }
+
+                return redirect()->route('panel.companies.create')
+                    ->with('error', 'Você precisa criar/estar vinculado a uma empresa para acessar o sistema.');
             }
 
             // Seleciona automaticamente a primeira empresa
             $user->switchCompany($firstCompany->id);
         }
+
+        app(\App\Support\CurrentCompany::class)->set($user->current_company_id);
 
         // Compartilha a empresa atual com todas as views
         view()->share('currentCompany', $user->getCurrentCompany());
