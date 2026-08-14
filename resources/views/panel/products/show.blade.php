@@ -552,7 +552,8 @@
 <style>
 .description-preview {
   padding: 1rem;
-  background: #f8f9fa;
+  background: var(--app-surface-2);
+  border: 1px solid var(--app-border);
   border-radius: 8px;
 }
 
@@ -615,13 +616,13 @@
 }
 
 .image-preview-card:hover {
-  background-color: #f8f9fa;
+  background-color: var(--app-surface-2);
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  box-shadow: var(--app-shadow);
 }
 
 .image-preview-card img {
-  border: 2px solid #dee2e6;
+  border: 2px solid var(--app-border);
 }
 
 .image-preview-card .image-checkbox {
