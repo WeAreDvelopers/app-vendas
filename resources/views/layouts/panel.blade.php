@@ -1,36 +1,79 @@
 <!doctype html>
-<html lang="pt-br">
+<html lang="pt-br" data-bs-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>@yield('title', 'Painel')</title>
+  {{-- Aplica o tema antes da pintura para evitar flash --}}
+  <script>(function(){try{var t=localStorage.getItem('theme');if(!t){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-bs-theme',t);}catch(e){}})();</script>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    :root {
-      --notion-bg: #f6f5f4;
-      --notion-card: #fff;
-      --notion-muted: #6b7280;
-      --notion-border: #e5e7eb;
+    :root, [data-bs-theme="light"] {
+      color-scheme: light;
+      --bs-primary: #2563eb; --bs-primary-rgb: 37,99,235;
+      --bs-body-bg: #f5f6f8; --bs-body-color: #111827;
+      --bs-border-color: #e6e8ec; --bs-secondary-color: #667085;
+      --bs-link-color: #2563eb; --bs-link-hover-color: #1d4ed8;
+      --app-surface: #ffffff; --app-surface-2: #f8fafc;
+      --app-border: #e6e8ec; --app-text: #111827; --app-muted: #667085;
+      --app-accent: #2563eb; --app-accent-soft: #eef4ff;
+      --app-shadow: 0 1px 2px rgba(16,18,27,.04), 0 4px 16px rgba(16,18,27,.06);
+      --app-green: #12a150; --app-green-soft: #e7f6ee;
+      --app-amber: #b45309; --app-amber-soft: #fdf3e6;
+      --app-radius: 14px;
     }
-    html, body { height: 100%; background: var(--notion-bg); }
-    .app-shell { display:flex; min-height:100vh; }
-    .sidebar { width: 260px; min-width: 260px; background: #ffffff; border-right: 1px solid var(--notion-border); position: sticky; top:0; height:100vh; padding: 12px 10px; }
-    .sidebar .brand { font-weight: 700; font-size: 1.1rem; letter-spacing:.3px; }
-    .sidebar a.nav-link { border-radius: 10px; color:#111827; }
-    .sidebar a.nav-link.active, .sidebar a.nav-link:hover { background: #2c2c2cff; color: #fff; }
-    .topbar { position: sticky; top:0; z-index: 20; background: var(--notion-bg); border-bottom: 1px solid var(--notion-border); }
-    .page { padding: 24px; 
-      /* max-width: 1200px; */
-       margin: 0 auto; }
-    .page-title { font-weight: 800; letter-spacing:.2px; font-size: 1.5rem; }
-    .notion-card { background: var(--notion-card); border:1px solid var(--notion-border); border-radius: 12px; padding: 16px; }
-    .muted { color: var(--notion-muted); }
-    .chip { font-size: .75rem; border:1px solid var(--notion-border); border-radius: 20px; padding: 4px 10px; background:#fff; }
+    [data-bs-theme="dark"] {
+      color-scheme: dark;
+      --bs-primary: #3b82f6; --bs-primary-rgb: 59,130,246;
+      --bs-body-bg: #0e1116; --bs-body-color: #e6e8ee;
+      --bs-border-color: #252b36; --bs-secondary-color: #9aa3b2;
+      --bs-link-color: #60a5fa; --bs-link-hover-color: #93c5fd;
+      --app-surface: #161a22; --app-surface-2: #1b2029;
+      --app-border: #252b36; --app-text: #e6e8ee; --app-muted: #9aa3b2;
+      --app-accent: #3b82f6; --app-accent-soft: rgba(59,130,246,.16);
+      --app-shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.35);
+      --app-green: #3ddc84; --app-green-soft: rgba(61,220,132,.14);
+      --app-amber: #f0a742; --app-amber-soft: rgba(240,167,66,.14);
+    }
+    html, body { min-height: 100%; }
+    body { font-family: Inter, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bs-body-bg); color: var(--app-text); -webkit-font-smoothing: antialiased; }
+    .app-shell { display:flex; min-height:100dvh; }
+    .sidebar { width: 248px; min-width: 248px; background: var(--app-surface); border-right: 1px solid var(--app-border);
+      position: sticky; top:0; height:100dvh; padding: 14px 10px; }
+    .sidebar .brand { font-weight: 700; font-size: 1.02rem; letter-spacing:-.01em; display:flex; align-items:center; gap:10px; padding:6px 6px 10px; }
+    .brand-mark { width:28px; height:28px; border-radius:8px; background:var(--app-accent); color:#fff; display:grid; place-items:center; font-size:1rem; }
+    .sidebar .nav-sec { font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:var(--app-muted); font-weight:600; padding:12px 10px 5px; }
+    .sidebar a.nav-link { border-radius: 10px; color: var(--app-text); font-weight:500; padding:.5rem .65rem; display:flex; align-items:center; position:relative; transition:background .15s, color .15s; }
+    .sidebar a.nav-link i { opacity:.7; transition:opacity .15s; }
+    .sidebar a.nav-link:hover { background: var(--app-surface-2); }
+    .sidebar a.nav-link.active { background: var(--app-accent-soft); color: var(--app-accent); font-weight:600; }
+    .sidebar a.nav-link.active i { opacity:1; }
+    .sidebar a.nav-link.active::before { content:""; position:absolute; left:-10px; top:8px; bottom:8px; width:3px; border-radius:3px; background:var(--app-accent); }
+    .topbar { position: sticky; top:0; z-index: 20; background: color-mix(in srgb, var(--bs-body-bg) 82%, transparent);
+      backdrop-filter: blur(8px); border-bottom: 1px solid var(--app-border); }
+    .page { padding: 24px; max-width: 1240px; margin: 0 auto; }
+    .page-title { font-weight: 700; letter-spacing:-.02em; font-size: 1.5rem; }
+    .notion-card { background: var(--app-surface); border:1px solid var(--app-border); border-radius: var(--app-radius); padding: 18px; box-shadow: var(--app-shadow); }
+    .muted { color: var(--app-muted); }
+    .chip { font-size: .75rem; border:1px solid var(--app-border); border-radius: 20px; padding: 4px 10px; background: var(--app-surface); color: var(--app-text); }
+    .table { --bs-table-bg: transparent; }
     .table > :not(caption) > * > * { background: transparent; }
-    .search-input { border-radius: 10px; }
-    .avatar { width:32px;height:32px;border-radius:50%;background:#d1d5db;display:inline-block; }
+    .table thead th { color: var(--app-muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
+    .table td, .table th { border-color: var(--app-border); }
+    .tabular, td.num { font-variant-numeric: tabular-nums; }
+    .btn { border-radius: 9px; font-weight: 500; }
+    .form-control, .form-select, .search-input { border-radius: 10px; }
+    .dropdown-menu { border-radius: 12px; border-color: var(--app-border); box-shadow: var(--app-shadow); }
+    .alert { border-radius: 12px; }
+    .avatar { width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg,var(--app-accent),#7aa2f7); color:#fff; display:grid; place-items:center; font-weight:600; font-size:.8rem; }
+    @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
   </style>
   @stack('head')
 </head>
@@ -38,7 +81,7 @@
 <div class="app-shell">
   <aside class="sidebar d-none d-md-flex flex-column gap-2">
     <div class="d-flex align-items-center justify-content-between px-2 pt-1 pb-2">
-      <div class="brand">📦 Catálogo ML</div>
+      <div class="brand"><span class="brand-mark"><i class="bi bi-box-seam"></i></span> Catálogo ML</div>
     </div>
     <nav class="nav nav-pills flex-column">
       <a class="nav-link {{ request()->routeIs('panel.dashboard') ? 'active' : '' }}" href="{{ route('panel.dashboard') }}"><i class="bi bi-grid me-2"></i>Dashboard</a>
@@ -116,6 +159,11 @@
               <i class="bi bi-building"></i> {{ $currentCompany->name }}
             </span>
             @endif
+
+            <!-- Theme toggle -->
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="themeToggle" title="Alternar tema" aria-label="Alternar tema claro/escuro">
+              <i class="bi bi-moon-stars"></i>
+            </button>
 
             <!-- Notification Bell -->
             <div class="dropdown">
@@ -493,11 +541,11 @@
 }
 
 .notification-item:hover {
-  background-color: #f8f9fa;
+  background-color: var(--app-surface-2);
 }
 
 .notification-item.unread {
-  background-color: #e7f3ff;
+  background-color: var(--app-accent-soft);
 }
 
 .notification-item.read {
@@ -509,6 +557,27 @@
   padding: 0.25em 0.4em;
 }
 </style>
+
+<!-- Theme toggle -->
+<script>
+(function(){
+  var btn = document.getElementById('themeToggle');
+  if(!btn) return;
+  function syncIcon(){
+    var dark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+    var i = btn.querySelector('i');
+    if(i) i.className = dark ? 'bi bi-sun' : 'bi bi-moon-stars';
+  }
+  syncIcon();
+  btn.addEventListener('click', function(){
+    var dark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+    var next = dark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-bs-theme', next);
+    try { localStorage.setItem('theme', next); } catch(e){}
+    syncIcon();
+  });
+})();
+</script>
 
 @stack('scripts')
 </body>
