@@ -16,13 +16,13 @@
   <style>
     :root, [data-bs-theme="light"] {
       color-scheme: light;
-      --bs-primary: #2563eb; --bs-primary-rgb: 37,99,235;
+      --bs-primary: #1877f2; --bs-primary-rgb: 24,119,242;
       --bs-body-bg: #f5f6f8; --bs-body-color: #111827;
       --bs-border-color: #e6e8ec; --bs-secondary-color: #667085;
-      --bs-link-color: #2563eb; --bs-link-hover-color: #1d4ed8;
+      --bs-link-color: #1877f2; --bs-link-hover-color: #0f5fd0;
       --app-surface: #ffffff; --app-surface-2: #f8fafc;
       --app-border: #e6e8ec; --app-text: #111827; --app-muted: #667085;
-      --app-accent: #2563eb; --app-accent-soft: #eef4ff;
+      --app-accent: #1877f2; --app-accent-soft: #e9f2fe;
       --app-shadow: 0 1px 2px rgba(16,18,27,.04), 0 4px 16px rgba(16,18,27,.06);
       --app-green: #12a150; --app-green-soft: #e7f6ee;
       --app-amber: #b45309; --app-amber-soft: #fdf3e6;
@@ -30,13 +30,13 @@
     }
     [data-bs-theme="dark"] {
       color-scheme: dark;
-      --bs-primary: #3b82f6; --bs-primary-rgb: 59,130,246;
+      --bs-primary: #4b9bff; --bs-primary-rgb: 75,155,255;
       --bs-body-bg: #0e1116; --bs-body-color: #e6e8ee;
       --bs-border-color: #252b36; --bs-secondary-color: #9aa3b2;
-      --bs-link-color: #60a5fa; --bs-link-hover-color: #93c5fd;
+      --bs-link-color: #6fb0ff; --bs-link-hover-color: #9ac8ff;
       --app-surface: #161a22; --app-surface-2: #1b2029;
       --app-border: #252b36; --app-text: #e6e8ee; --app-muted: #9aa3b2;
-      --app-accent: #3b82f6; --app-accent-soft: rgba(59,130,246,.16);
+      --app-accent: #4b9bff; --app-accent-soft: rgba(75,155,255,.18);
       --app-shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.35);
       --app-green: #3ddc84; --app-green-soft: rgba(61,220,132,.14);
       --app-amber: #f0a742; --app-amber-soft: rgba(240,167,66,.14);
@@ -48,7 +48,7 @@
     .sidebar { width: 248px; min-width: 248px; background: var(--app-surface); border-right: 1px solid var(--app-border);
       position: sticky; top:0; height:100dvh; padding: 14px 10px; }
     .sidebar .brand { font-weight: 700; font-size: 1.02rem; letter-spacing:-.01em; display:flex; align-items:center; gap:10px; padding:6px 6px 10px; }
-    .brand-mark { width:28px; height:28px; border-radius:8px; background:var(--app-accent); color:#fff; display:grid; place-items:center; font-size:1rem; }
+    .brand-mark { width:30px; height:30px; flex-shrink:0; display:block; }
     .sidebar .nav-sec { font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:var(--app-muted); font-weight:600; padding:12px 10px 5px; }
     .sidebar a.nav-link { border-radius: 10px; color: var(--app-text); font-weight:500; padding:.5rem .65rem; display:flex; align-items:center; position:relative; transition:background .15s, color .15s; }
     .sidebar a.nav-link i { opacity:.7; transition:opacity .15s; }
@@ -81,7 +81,7 @@
 <div class="app-shell">
   <aside class="sidebar d-none d-md-flex flex-column gap-2">
     <div class="d-flex align-items-center justify-content-between px-2 pt-1 pb-2">
-      <div class="brand"><span class="brand-mark"><i class="bi bi-box-seam"></i></span> Catálogo ML</div>
+      <div class="brand"><span class="brand-mark">@include('partials.brand-mark')</span> <span>Fiply <span style="color:var(--app-accent)">Vendas</span></span></div>
     </div>
     <nav class="nav nav-pills flex-column">
       <a class="nav-link {{ request()->routeIs('panel.dashboard') ? 'active' : '' }}" href="{{ route('panel.dashboard') }}"><i class="bi bi-grid me-2"></i>Dashboard</a>
