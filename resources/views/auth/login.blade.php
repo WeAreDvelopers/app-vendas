@@ -1,90 +1,64 @@
 <!doctype html>
-<html lang="pt-br">
+<html lang="pt-br" data-bs-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>Login - Catálogo ML</title>
+  <script>(function(){try{var t=localStorage.getItem('theme');if(!t){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-bs-theme',t);}catch(e){}})();</script>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    :root {
-      --notion-bg: #f6f5f4;
-      --notion-card: #fff;
-      --notion-border: #e5e7eb;
+    :root, [data-bs-theme="light"] {
+      color-scheme: light;
+      --bs-primary: #2563eb; --bs-primary-rgb: 37,99,235;
+      --app-bg: #eef2ff; --app-bg-2: #f5f6f8;
+      --app-surface: #ffffff; --app-border: #e6e8ec; --app-text: #111827; --app-muted: #667085;
+      --app-accent: #2563eb; --app-shadow: 0 20px 60px rgba(16,18,27,.14), 0 2px 8px rgba(16,18,27,.06);
+    }
+    [data-bs-theme="dark"] {
+      color-scheme: dark;
+      --bs-primary: #3b82f6; --bs-primary-rgb: 59,130,246;
+      --app-bg: #0b0e13; --app-bg-2: #0e1116;
+      --app-surface: #161a22; --app-border: #252b36; --app-text: #e6e8ee; --app-muted: #9aa3b2;
+      --app-accent: #3b82f6; --app-shadow: 0 20px 60px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.4);
     }
     body {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px;
+      font-family: Inter, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--app-text);
+      background:
+        radial-gradient(1200px 500px at 50% -10%, color-mix(in srgb, var(--app-accent) 18%, transparent), transparent 60%),
+        linear-gradient(180deg, var(--app-bg), var(--app-bg-2));
+      -webkit-font-smoothing: antialiased;
     }
     .login-card {
-      background: white;
-      border-radius: 16px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-      padding: 40px;
-      width: 100%;
-      max-width: 420px;
+      background: var(--app-surface); border: 1px solid var(--app-border);
+      border-radius: 18px; box-shadow: var(--app-shadow); padding: 36px 34px; width: 100%; max-width: 420px;
     }
-    .brand {
-      font-size: 2rem;
-      font-weight: 700;
-      text-align: center;
-      margin-bottom: 8px;
-    }
-    .brand-subtitle {
-      text-align: center;
-      color: #6b7280;
-      margin-bottom: 32px;
-      font-size: 0.9rem;
-    }
-    .form-label {
-      font-weight: 600;
-      color: #374151;
-      margin-bottom: 8px;
-    }
-    .form-control {
-      border-radius: 10px;
-      border: 1px solid var(--notion-border);
-      padding: 12px 16px;
-      font-size: 0.95rem;
-    }
-    .form-control:focus {
-      border-color: #667eea;
-      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-    }
-    .btn-login {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      border: none;
-      border-radius: 10px;
-      padding: 12px;
-      font-weight: 600;
-      color: white;
-      width: 100%;
-      margin-top: 24px;
-      transition: transform 0.2s;
-    }
-    .btn-login:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
-      color: white;
-    }
-    .form-check-label {
-      color: #6b7280;
-      font-size: 0.9rem;
-    }
-    .alert {
-      border-radius: 10px;
-      border: none;
-    }
+    .brand-row { display: flex; align-items: center; justify-content: center; gap: 11px; margin-bottom: 6px; }
+    .brand-mark { width: 40px; height: 40px; border-radius: 11px; background: var(--app-accent); color: #fff; display: grid; place-items: center; font-size: 1.25rem; }
+    .brand-name { font-size: 1.4rem; font-weight: 700; letter-spacing: -.02em; }
+    .brand-subtitle { text-align: center; color: var(--app-muted); margin-bottom: 28px; font-size: .9rem; }
+    .form-label { font-weight: 600; color: var(--app-text); margin-bottom: 6px; font-size: .875rem; }
+    .form-control { border-radius: 10px; padding: 11px 14px; font-size: .95rem; }
+    .btn-primary { --bs-btn-padding-y: .7rem; border-radius: 10px; font-weight: 600; width: 100%; margin-top: 8px; }
+    .form-check-label { color: var(--app-muted); font-size: .9rem; }
+    .alert { border-radius: 11px; }
+    .pw-wrap { position: relative; }
+    .pw-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: transparent; color: var(--app-muted); width: 36px; height: 36px; border-radius: 8px; }
   </style>
 </head>
 <body>
   <div class="login-card">
-    <div class="brand">📦 Catálogo ML</div>
-    <div class="brand-subtitle">Sistema de Gestão de Produtos</div>
+    <div class="brand-row">
+      <span class="brand-mark"><i class="bi bi-box-seam"></i></span>
+      <span class="brand-name">Catálogo ML</span>
+    </div>
+    <div class="brand-subtitle">Sistema de Gestão de Produtos e Vendas</div>
 
     @if(session('success'))
       <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -92,14 +66,12 @@
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
       </div>
     @endif
-
     @if(session('error'))
       <div class="alert alert-danger alert-dismissible fade show" role="alert">
         <i class="bi bi-x-circle me-2"></i>{{ session('error') }}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
       </div>
     @endif
-
     @if($errors->any())
       <div class="alert alert-danger alert-dismissible fade show" role="alert">
         <i class="bi bi-x-circle me-2"></i>{{ $errors->first() }}
@@ -111,66 +83,53 @@
       @csrf
 
       <div class="mb-3">
-        <label for="email" class="form-label">
-          <i class="bi bi-envelope me-1"></i> E-mail
-        </label>
-        <input
-          type="email"
-          class="form-control @error('email') is-invalid @enderror"
-          id="email"
-          name="email"
-          value="{{ old('email') }}"
-          placeholder="seu@email.com"
-          required
-          autofocus
-        >
-        @error('email')
-          <div class="invalid-feedback">{{ $message }}</div>
-        @enderror
+        <label for="email" class="form-label">E-mail</label>
+        <input type="email" class="form-control @error('email') is-invalid @enderror" id="email" name="email"
+               value="{{ old('email') }}" placeholder="seu@email.com" autocomplete="email" required autofocus>
+        @error('email')<div class="invalid-feedback">{{ $message }}</div>@enderror
       </div>
 
       <div class="mb-3">
-        <label for="password" class="form-label">
-          <i class="bi bi-lock me-1"></i> Senha
-        </label>
-        <input
-          type="password"
-          class="form-control @error('password') is-invalid @enderror"
-          id="password"
-          name="password"
-          placeholder="••••••••"
-          required
-        >
-        @error('password')
-          <div class="invalid-feedback">{{ $message }}</div>
-        @enderror
+        <label for="password" class="form-label">Senha</label>
+        <div class="pw-wrap">
+          <input type="password" class="form-control @error('password') is-invalid @enderror" id="password" name="password"
+                 placeholder="••••••••" autocomplete="current-password" required>
+          <button type="button" class="pw-toggle" id="pwToggle" aria-label="Mostrar senha" title="Mostrar/ocultar senha">
+            <i class="bi bi-eye"></i>
+          </button>
+        </div>
+        @error('password')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
       </div>
 
-      <div class="form-check mb-3">
-        <input
-          type="checkbox"
-          class="form-check-input"
-          id="remember"
-          name="remember"
-        >
-        <label class="form-check-label" for="remember">
-          Lembrar de mim
-        </label>
+      <div class="form-check mb-2">
+        <input type="checkbox" class="form-check-input" id="remember" name="remember">
+        <label class="form-check-label" for="remember">Lembrar de mim</label>
       </div>
 
-      <button type="submit" class="btn btn-login">
+      <button type="submit" class="btn btn-primary">
         <i class="bi bi-box-arrow-in-right me-2"></i>Entrar
       </button>
     </form>
 
     <div class="text-center mt-4">
-      <small class="text-muted">
-        <i class="bi bi-shield-lock me-1"></i>
-        Acesso restrito a usuários autorizados
+      <small class="muted" style="color:var(--app-muted)">
+        <i class="bi bi-shield-lock me-1"></i> Acesso restrito a usuários autorizados
       </small>
     </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    (function(){
+      var btn = document.getElementById('pwToggle'), pw = document.getElementById('password');
+      if(!btn || !pw) return;
+      btn.addEventListener('click', function(){
+        var show = pw.type === 'password';
+        pw.type = show ? 'text' : 'password';
+        btn.querySelector('i').className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+        btn.setAttribute('aria-label', show ? 'Ocultar senha' : 'Mostrar senha');
+      });
+    })();
+  </script>
 </body>
 </html>
