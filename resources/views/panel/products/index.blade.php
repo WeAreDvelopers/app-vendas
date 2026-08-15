@@ -132,7 +132,7 @@
 
         <p class="mb-3">Você está prestes a excluir permanentemente:</p>
 
-        <div class="bg-light p-3 rounded mb-3">
+        <div class="bg-body-secondary p-3 rounded mb-3">
           <div class="fw-bold">{{ $p->name }}</div>
           <small class="text-muted">SKU: {{ $p->sku }}</small>
         </div>

@@ -626,8 +626,8 @@
 }
 
 .image-preview-card .image-checkbox {
-  background-color: white;
-  border: 2px solid #6c757d;
+  background-color: var(--app-surface);
+  border: 2px solid var(--app-border);
   cursor: pointer;
 }
 </style>
@@ -894,7 +894,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         <p class="mb-3">Você está prestes a excluir permanentemente o produto:</p>
 
-        <div class="bg-light p-3 rounded mb-3">
+        <div class="bg-body-secondary p-3 rounded mb-3">
           <div class="fw-bold">{{ $product->name }}</div>
           <small class="text-muted">SKU: {{ $product->sku }}</small>
         </div>

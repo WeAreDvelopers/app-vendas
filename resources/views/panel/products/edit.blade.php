@@ -752,7 +752,7 @@ if (regenerateBtn) {
 
         <div class="mb-3">
           <h6 class="mb-2">Informações do Produto:</h6>
-          <div class="bg-light p-3 rounded">
+          <div class="bg-body-secondary p-3 rounded">
             <div><strong>Nome:</strong> {{ $product->name }}</div>
             @if($product->brand ?? false)
             <div><strong>Marca:</strong> {{ $product->brand }}</div>

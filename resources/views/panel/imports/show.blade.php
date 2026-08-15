@@ -301,7 +301,7 @@ document.getElementById('convertWithoutAI').addEventListener('click', function()
 
         <p class="mb-3">Você está prestes a excluir permanentemente este item da importação:</p>
 
-        <div class="bg-light p-3 rounded mb-3">
+        <div class="bg-body-secondary p-3 rounded mb-3">
           <div class="fw-bold">{{ $r->name }}</div>
           <small class="text-muted">SKU: {{ $r->sku }}</small><br>
           @if($r->ean)
