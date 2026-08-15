@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>Login - Fiply Vendas</title>
+  @include('partials.favicons')
   <script>(function(){try{var t=localStorage.getItem('theme');if(!t){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-bs-theme',t);}catch(e){}})();</script>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
@@ -40,7 +41,7 @@
       border-radius: 18px; box-shadow: var(--app-shadow); padding: 36px 34px; width: 100%; max-width: 420px;
     }
     .brand-row { display: flex; align-items: center; justify-content: center; gap: 11px; margin-bottom: 6px; }
-    .brand-mark { width: 44px; height: 44px; display: block; }
+    .brand-mark { width: 56px; height: 40px; display: block; }
     .brand-name { font-size: 1.45rem; font-weight: 700; letter-spacing: -.02em; }
     .brand-name .accent { color: var(--app-accent); }
     .brand-subtitle { text-align: center; color: var(--app-muted); margin-bottom: 28px; font-size: .9rem; }

@@ -6,6 +6,7 @@
   <meta name="color-scheme" content="light dark">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>@yield('title', 'Painel')</title>
+  @include('partials.favicons')
   {{-- Aplica o tema antes da pintura para evitar flash --}}
   <script>(function(){try{var t=localStorage.getItem('theme');if(!t){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-bs-theme',t);}catch(e){}})();</script>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -48,7 +49,8 @@
     .sidebar { width: 248px; min-width: 248px; background: var(--app-surface); border-right: 1px solid var(--app-border);
       position: sticky; top:0; height:100dvh; padding: 14px 10px; }
     .sidebar .brand { font-weight: 700; font-size: 1.02rem; letter-spacing:-.01em; display:flex; align-items:center; gap:10px; padding:6px 6px 10px; }
-    .brand-mark { width:30px; height:30px; flex-shrink:0; display:block; }
+    /* caixa na proporcao do icone (423x301) para nao sobrar espaco vazio */
+    .brand-mark { width:39px; height:28px; flex-shrink:0; display:block; }
     .sidebar .nav-sec { font-size:.68rem; letter-spacing:.08em; text-transform:uppercase; color:var(--app-muted); font-weight:600; padding:12px 10px 5px; }
     .sidebar a.nav-link { border-radius: 10px; color: var(--app-text); font-weight:500; padding:.5rem .65rem; display:flex; align-items:center; position:relative; transition:background .15s, color .15s; }
     .sidebar a.nav-link i { opacity:.7; transition:opacity .15s; }
